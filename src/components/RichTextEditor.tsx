@@ -47,6 +47,7 @@ import TableExtension from '@tiptap/extension-table';
 import TableRowExtension from '@tiptap/extension-table-row';
 import TableCellExtension from '@tiptap/extension-table-cell';
 import TableHeaderExtension from '@tiptap/extension-table-header';
+import Placeholder from '@tiptap/extension-placeholder'; // Import Placeholder
 
 // Lowlight and highlight.js for CodeBlockLowlight
 import { createLowlight } from 'lowlight'; 
@@ -273,6 +274,9 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       StarterKit.configure({
         codeBlock: false, // Disable default to use CodeBlockLowlight
       }),
+      Placeholder.configure({ // Add and configure Placeholder
+        placeholder: "Start writing your document, or type '/' for commands...",
+      }),
       CodeBlockLowlight.configure({
         lowlight: lowlightInstance,
       }),
@@ -297,24 +301,17 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
 
   useEffect(() => {
     if (editor) {
-      // Avoid re-setting content if it's already the same, which can lose cursor position
-      // or trigger unnecessary updates.
-      // Check if the current editor content (HTML) is different from the incoming `value` prop.
       const currentHTML = editor.getHTML();
       if (currentHTML === value) {
         return;
       }
-      // Only set content if it's different. Store selection before and restore after.
       const { from, to } = editor.state.selection;
-      editor.commands.setContent(value, false); // `false` means don't emit update
+      editor.commands.setContent(value, false); 
       
-      // Attempt to restore selection if the editor is focused.
-      // This might not always be perfect, especially if content length changes drastically.
       if (editor.isFocused) {
          try {
             editor.commands.setTextSelection({ from, to });
          } catch (e) {
-            // If restoring selection fails (e.g., out of bounds), set cursor to end.
             editor.commands.focus('end');
          }
       }
@@ -367,10 +364,6 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     try {
       const result: AutoFormatTextOutput = await autoFormatText({ textToFormat: text });
       if (selection) {
-        // For TipTap, it's better to insert HTML if the AI returns structured content (like Markdown)
-        // If autoFormatText returns plain text that *looks* like markdown, 
-        // TipTap might not render it as HTML automatically unless it's parsed.
-        // For now, assuming autoFormatText provides text that TipTap can digest or it's already HTML.
         editor.chain().focus().setTextSelection(selection).deleteSelection().insertContent(result.formattedText).run();
       } else {
         editor.commands.setContent(result.formattedText);
