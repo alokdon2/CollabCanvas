@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useRef } from 'react';
@@ -324,7 +323,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       const { selection } = editor.state;
       const { from, to } = selection;
 
-      if (selection.empty && from > 1) { // from > 1 to avoid issues at the very start
+      if (selection.empty && from > 1) { 
         const textBeforeCursor = editor.state.doc.textBetween(from - 2, from, "\n");
         if (textBeforeCursor === "/ ") {
           const coords = editor.view.coordsAtPos(from);
@@ -335,21 +334,19 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
             const anchorLeft = coords.left - wrapperRect.left;
             setSlashCommandAnchorPos({ top: anchorTop, left: anchorLeft });
           } else {
-             // Fallback if wrapperRect is not available (e.g., initial render)
             setSlashCommandAnchorPos({ top: coords.bottom, left: coords.left });
           }
           
           setIsSlashCommandMenuOpen(true);
-          // Important: Delete after setting open, so focus isn't lost to a non-existent menu
           editor.chain().focus().deleteRange({ from: from - 2, to }).run();
           return; 
         }
       }
-      // Close menu if text no longer matches or selection changes
+      // Close menu if text no longer matches or selection changes significantly
       if (isSlashCommandMenuOpen) {
-         const textBeforeCursor = editor.state.doc.textBetween(from - 2, from, "\n");
-         if (textBeforeCursor !== "/ " || !selection.empty) {
-            // setIsSlashCommandMenuOpen(false); // Handled by Popover onOpenChange or blur
+         const textBeforeCursor = editor.state.doc.textBetween(Math.max(0, from - 2), from, "\n"); // Ensure from-2 is not negative
+         if (textBeforeCursor.trim() !== "/" || !selection.empty) { // More robust check
+            // setIsSlashCommandMenuOpen(false); // Popover's onOpenChange will handle this
          }
       }
     },
@@ -369,19 +366,14 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       if (currentHTML !== newContent) {
         const { from, to } = editor.state.selection;
         editor.commands.setContent(newContent, false);
-        // Only try to restore selection if editor is focused and content is not the initial empty paragraph
         if (editor.isFocused && newContent !== "<p></p>") { 
            try {
-              // Ensure selection range is valid before applying
               if (from <= editor.state.doc.content.size && to <= editor.state.doc.content.size) {
                 editor.commands.setTextSelection({ from, to });
               } else {
-                // Fallback: focus at the end if the previous selection is no longer valid
                 editor.commands.focus('end');
               }
            } catch (e) {
-              // Catch any errors during selection setting and focus at the end
-              // console.warn("Error setting text selection, focusing end.", e);
               editor.commands.focus('end');
            }
         }
@@ -495,7 +487,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   const executeSlashCommand = (commandAction: (editor: Editor) => void) => {
     if (!editor) return;
     commandAction(editor);
-    // setIsSlashCommandMenuOpen(false); // Popover's onOpenChange will handle this
+    // Popover's onOpenChange will handle closing
   };
 
 
@@ -512,7 +504,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
           }}
         />
         <PopoverContent
-          className="w-60 p-1"
+          className="w-60 p-1" // Adjusted className for PopoverContent
           sideOffset={5}
           align="start"
           onCloseAutoFocus={() => editor?.chain().focus().run()}
@@ -523,8 +515,6 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
               key={index}
               onClick={() => executeSlashCommand(command.action)}
               className="flex items-center gap-2 w-full p-2 text-sm rounded-sm hover:bg-accent focus:bg-accent focus:outline-none"
-              // role="menuitem" // Radix might handle this for button children of PopoverContent
-              // tabIndex={-1} // For roving tabindex, but direct buttons are simpler
             >
               <command.icon className="h-4 w-4" />
               <span>{command.label}</span>
