@@ -5,6 +5,8 @@ import { useEffect, useState } from 'react';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Bold,
   Italic,
@@ -13,10 +15,15 @@ import {
   Heading3,
   List,
   ListOrdered,
-  Sparkles, // For AI Enhance
-  Pilcrow,  // For AI Auto-Format
-  AlignLeft, // For Summarize
+  Sparkles, 
+  Pilcrow,  
+  AlignLeft, 
   Loader2,
+  Code, // For inline code
+  SquareCode, // For code block
+  Quote, // For blockquote
+  Table as TableIcon, // For table
+  Image as ImageIcon, // For image
 } from "lucide-react";
 import { AITextEnhancementDialog } from "./AITextEnhancementDialog";
 import { generateProjectSummary, type GenerateProjectSummaryOutput } from "@/ai/flows/generate-project-summary";
@@ -31,11 +38,54 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Textarea } from './ui/textarea'; // For summary display
+import { Textarea } from './ui/textarea'; 
+
+// TipTap Extensions
+import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
+import ImageExtension from '@tiptap/extension-image';
+import TableExtension from '@tiptap/extension-table';
+import TableRowExtension from '@tiptap/extension-table-row';
+import TableCellExtension from '@tiptap/extension-table-cell';
+import TableHeaderExtension from '@tiptap/extension-table-header';
+
+// Lowlight and highlight.js for CodeBlockLowlight
+import { lowlight } from 'lowlight/lib/core';
+import javascript from 'highlight.js/lib/languages/javascript';
+import css from 'highlight.js/lib/languages/css';
+import html from 'highlight.js/lib/languages/xml'; // xml for html
+import typescript from 'highlight.js/lib/languages/typescript';
+import python from 'highlight.js/lib/languages/python';
+import java from 'highlight.js/lib/languages/java';
+import csharp from 'highlight.js/lib/languages/csharp';
+import cpp from 'highlight.js/lib/languages/cpp';
+import php from 'highlight.js/lib/languages/php';
+import shell from 'highlight.js/lib/languages/shell';
+import markdown from 'highlight.js/lib/languages/markdown';
+
+// Register languages with lowlight
+lowlight.registerLanguage('javascript', javascript);
+lowlight.registerLanguage('js', javascript);
+lowlight.registerLanguage('css', css);
+lowlight.registerLanguage('html', html);
+lowlight.registerLanguage('xml', html);
+lowlight.registerLanguage('typescript', typescript);
+lowlight.registerLanguage('ts', typescript);
+lowlight.registerLanguage('python', python);
+lowlight.registerLanguage('py', python);
+lowlight.registerLanguage('java', java);
+lowlight.registerLanguage('csharp', csharp);
+lowlight.registerLanguage('cs', csharp);
+lowlight.registerLanguage('cpp', cpp);
+lowlight.registerLanguage('php', php);
+lowlight.registerLanguage('shell', shell);
+lowlight.registerLanguage('sh', shell);
+lowlight.registerLanguage('markdown', markdown);
+lowlight.registerLanguage('md', markdown);
+
 
 interface RichTextEditorProps {
-  value: string; // Expects HTML string
-  onChange: (value: string) => void; // Will emit HTML string
+  value: string; 
+  onChange: (value: string) => void; 
 }
 
 const TipTapToolbar = ({ 
@@ -43,12 +93,14 @@ const TipTapToolbar = ({
   onAiEnhance,
   onAutoFormat,
   onSummarize,
+  onInsertImage,
   isAiLoading,
 }: { 
   editor: Editor | null;
   onAiEnhance: () => void;
   onAutoFormat: () => void;
   onSummarize: () => void;
+  onInsertImage: () => void;
   isAiLoading: boolean;
 }) => {
   if (!editor) {
@@ -74,6 +126,15 @@ const TipTapToolbar = ({
         <Italic className="h-4 w-4" />
       </Button>
       <Button
+        onClick={() => editor.chain().focus().toggleCode().run()}
+        variant={editor.isActive('code') ? 'secondary' : 'ghost'}
+        size="icon"
+        title="Inline Code"
+      >
+        <Code className="h-4 w-4" />
+      </Button>
+      <div className="h-6 w-px bg-border mx-1"></div>
+      <Button
         onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
         variant={editor.isActive('heading', { level: 1 }) ? 'secondary' : 'ghost'}
         size="icon"
@@ -97,6 +158,7 @@ const TipTapToolbar = ({
       >
         <Heading3 className="h-4 w-4" />
       </Button>
+      <div className="h-6 w-px bg-border mx-1"></div>
       <Button
         onClick={() => editor.chain().focus().toggleBulletList().run()}
         variant={editor.isActive('bulletList') ? 'secondary' : 'ghost'}
@@ -113,6 +175,39 @@ const TipTapToolbar = ({
       >
         <ListOrdered className="h-4 w-4" />
       </Button>
+      <Button
+        onClick={() => editor.chain().focus().toggleBlockquote().run()}
+        variant={editor.isActive('blockquote') ? 'secondary' : 'ghost'}
+        size="icon"
+        title="Blockquote"
+      >
+        <Quote className="h-4 w-4" />
+      </Button>
+      <Button
+        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+        variant={editor.isActive('codeBlock') ? 'secondary' : 'ghost'}
+        size="icon"
+        title="Code Block"
+      >
+        <SquareCode className="h-4 w-4" />
+      </Button>
+      <Button
+        onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+        variant={'ghost'}
+        size="icon"
+        title="Insert Table"
+      >
+        <TableIcon className="h-4 w-4" />
+      </Button>
+      <Button
+        onClick={onInsertImage}
+        variant={'ghost'}
+        size="icon"
+        title="Insert Image"
+      >
+        <ImageIcon className="h-4 w-4" />
+      </Button>
+
 
       {/* AI Buttons */}
       <div className="h-6 w-px bg-border mx-1"></div>
@@ -164,14 +259,28 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   // State for Summary Dialog
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
   const [summaryContent, setSummaryContent] = useState("");
+
+  // State for Image URL Dialog
+  const [isImageDialogOpen, setIsImageDialogOpen] = useState(false);
+  const [imageUrl, setImageUrl] = useState("");
   
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        // Configure starter kit options if needed
+        codeBlock: false, // Disable default to use CodeBlockLowlight
       }),
+      CodeBlockLowlight.configure({
+        lowlight,
+      }),
+      ImageExtension,
+      TableExtension.configure({
+        resizable: true,
+      }),
+      TableRowExtension,
+      TableCellExtension,
+      TableHeaderExtension,
     ],
-    content: value, // Initial content (HTML string)
+    content: value, 
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },
@@ -189,8 +298,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
         return;
       }
       const { from, to } = editor.state.selection;
-      editor.commands.setContent(value, false); // false to prevent firing onUpdate again
-      // Try to restore selection if editor had focus, otherwise it might steal focus
+      editor.commands.setContent(value, false); 
       if (editor.isFocused) {
         editor.commands.setTextSelection({ from, to });
       }
@@ -243,10 +351,8 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     try {
       const result: AutoFormatTextOutput = await autoFormatText({ textToFormat: text });
       if (selection) {
-        // Replace selection. TipTap should parse basic Markdown.
         editor.chain().focus().setTextSelection(selection).deleteSelection().insertContent(result.formattedText).run();
       } else {
-        // Replace whole document
         editor.commands.setContent(result.formattedText);
       }
       toast({ title: "AI Auto-Format Complete", description: result.explanation || "Formatting applied." });
@@ -265,7 +371,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     }
     setIsAiLoading(true);
     try {
-      const docText = editor.getText(); // Get plain text for summary
+      const docText = editor.getText(); 
       const result: GenerateProjectSummaryOutput = await generateProjectSummary({ textDocumentContent: docText });
       setSummaryContent(result.summary);
       setIsSummaryDialogOpen(true);
@@ -277,6 +383,19 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     }
   };
 
+  const handleOpenImageDialog = () => {
+    setImageUrl(""); // Reset image URL
+    setIsImageDialogOpen(true);
+  };
+
+  const handleInsertImage = () => {
+    if (editor && imageUrl) {
+      editor.chain().focus().setImage({ src: imageUrl }).run();
+    }
+    setIsImageDialogOpen(false);
+  };
+
+
   return (
     <div className="flex flex-col h-full rounded-lg border bg-card text-card-foreground shadow-sm">
       <TipTapToolbar 
@@ -284,11 +403,11 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
         onAiEnhance={handleAiEnhance}
         onAutoFormat={handleAutoFormat}
         onSummarize={handleSummarize}
+        onInsertImage={handleOpenImageDialog}
         isAiLoading={isAiLoading}
       />
       <EditorContent editor={editor} className="flex-grow h-full overflow-y-auto" />
 
-      {/* AI Text Enhancement Dialog */}
       <AITextEnhancementDialog
         isOpen={isEnhanceDialogOpen}
         onOpenChange={setIsEnhanceDialogOpen}
@@ -296,7 +415,6 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
         onApply={onApplyEnhancement}
       />
 
-      {/* Summarize Document Dialog */}
       <Dialog open={isSummaryDialogOpen} onOpenChange={setIsSummaryDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -318,7 +436,31 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Image URL Dialog */}
+      <Dialog open={isImageDialogOpen} onOpenChange={setIsImageDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Insert Image</DialogTitle>
+            <DialogDescription>
+              Enter the URL of the image you want to insert.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <Label htmlFor="imageUrl">Image URL</Label>
+            <Input
+              id="imageUrl"
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="https://example.com/image.png"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsImageDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleInsertImage} disabled={!imageUrl.trim()}>Insert Image</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-

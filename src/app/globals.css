@@ -2,6 +2,56 @@
 @tailwind components;
 @tailwind utilities;
 
+/* highlight.js default theme for code blocks (adapted) */
+/* You can replace this with any other highlight.js theme like 'atom-one-dark', 'github', etc. 
+   Just make sure to import the corresponding CSS file or adapt its styles here. */
+.hljs {
+  @apply block overflow-x-auto p-2 bg-muted text-foreground; /* Use theme colors */
+}
+.hljs-comment,
+.hljs-quote {
+  @apply text-muted-foreground italic;
+}
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-subst {
+  @apply text-primary font-semibold;
+}
+.hljs-number,
+.hljs-literal,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag .hljs-attr {
+  @apply text-accent; 
+}
+.hljs-string,
+.hljs-doctag {
+  @apply text-green-600 dark:text-green-400; /* Example specific color, adjust if needed */
+}
+.hljs-title,
+.hljs-section,
+.hljs-selector-id {
+  @apply text-blue-600 dark:text-blue-400 font-semibold; /* Example specific color */
+}
+.hljs-type,
+.hljs-class .hljs-title {
+  @apply text-purple-600 dark:text-purple-400 font-semibold; /* Example specific color */
+}
+.hljs-params {
+  @apply text-foreground;
+}
+.hljs-regexp,
+.hljs-link {
+  @apply text-orange-600 dark:text-orange-400; /* Example specific color */
+}
+.hljs-emphasis {
+  @apply italic;
+}
+.hljs-strong {
+  @apply font-bold;
+}
+
+
 @layer base {
   :root {
     --background: 0 0% 87.8%; /* Light Gray #E0E0E0 */
@@ -104,11 +154,14 @@
     --tw-prose-quotes: theme(colors.foreground);
     --tw-prose-quote-borders: theme(colors.primary / 0.5);
     --tw-prose-captions: theme(colors.muted-foreground);
-    --tw-prose-code: theme(colors.foreground);
-    --tw-prose-pre-code: theme(colors.foreground / 0.9);
-    --tw-prose-pre-bg: theme(colors.muted / 0.5);
+    --tw-prose-code: theme(colors.foreground); /* For inline code */
+    --tw-prose-pre-code: theme(colors.foreground / 0.9); /* For code in code blocks */
+    --tw-prose-pre-bg: theme(colors.muted / 0.2); /* Background for code blocks */
     --tw-prose-th-borders: theme(colors.border);
     --tw-prose-td-borders: theme(colors.border);
+    /* Table styling */
+    --tw-prose-thead: theme(colors.foreground);
+    --tw-prose-tbody: theme(colors.foreground);
   }
 
   .prose {
@@ -123,11 +176,74 @@
     --tw-prose-quotes: theme(colors.foreground);
     --tw-prose-quote-borders: theme(colors.primary / 0.5);
     --tw-prose-captions: theme(colors.muted-foreground);
-    --tw-prose-code: theme(colors.foreground);
-    --tw-prose-pre-code: theme(colors.foreground / 0.9);
-    --tw-prose-pre-bg: theme(colors.muted / 0.5);
+    --tw-prose-code: theme(colors.accent); /* For inline code, make it stand out a bit */
+    --tw-prose-pre-code: theme(colors.foreground / 0.9); /* For code in code blocks */
+    --tw-prose-pre-bg: theme(colors.muted / 0.5); /* Background for code blocks */
     --tw-prose-th-borders: theme(colors.border);
     --tw-prose-td-borders: theme(colors.border);
+    /* Table styling */
+    --tw-prose-thead: theme(colors.foreground);
+    --tw-prose-tbody: theme(colors.foreground);
+  }
+
+  /* TipTap Table specific styles */
+  .ProseMirror table {
+    border-collapse: collapse;
+    table-layout: fixed;
+    width: 100%;
+    margin: 1em 0; /* Add some margin around tables */
+    overflow: hidden;
+  }
+  .ProseMirror table td,
+  .ProseMirror table th {
+    min-width: 1em;
+    border: 1px solid hsl(var(--border)); /* Use theme border color */
+    padding: 0.5rem 0.75rem; /* Use rem for padding */
+    vertical-align: top;
+    box-sizing: border-box;
+    position: relative;
+  }
+  .ProseMirror table td > *,
+  .ProseMirror table th > * {
+    margin-bottom: 0;
+  }
+  .ProseMirror table th {
+    font-weight: bold;
+    text-align: left;
+    background-color: hsl(var(--muted) / 0.3); /* Lighter muted for header */
+  }
+  .ProseMirror .selectedCell:after {
+    z-index: 2;
+    position: absolute;
+    content: "";
+    left: 0; right: 0; top: 0; bottom: 0;
+    background: hsla(var(--primary), 0.15); /* Lighter primary for selection */
+    pointer-events: none;
+  }
+  .ProseMirror .column-resize-handle {
+    position: absolute;
+    right: -2px; /* Adjust for better grab */
+    top: 0;
+    bottom: 0; /* Extend to full height */
+    width: 4px;
+    background-color: hsla(var(--primary), 0.3); /* Lighter primary for handle */
+    cursor: col-resize;
+    pointer-events: auto; /* Allow grabbing */
+  }
+  .ProseMirror img {
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--radius);
+  }
+  .ProseMirror img.ProseMirror-selectednode {
+    outline: 3px solid hsl(var(--primary));
+  }
+
+  /* Ensure code blocks in prose use the hljs styles */
+  .prose pre code.hljs {
+    @apply !bg-transparent p-0; /* Override prose pre background if hljs provides its own */
+  }
+  .prose pre {
+      @apply rounded-md; /* Ensure pre tag also has rounded corners */
   }
 }
-
