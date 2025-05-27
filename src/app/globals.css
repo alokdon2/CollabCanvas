@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -245,6 +246,16 @@
   }
   .prose pre {
       @apply rounded-md; /* Ensure pre tag also has rounded corners */
+  }
+
+  /* Ensure Excalidraw fits its container */
+  .excalidraw-wrapper, .excalidraw {
+    width: 100%;
+    height: 100%;
+  }
+  .excalidraw.excalidraw-html-container { /* Target the specific Excalidraw container */
+    border-radius: var(--radius);
+    overflow: hidden; /* To ensure children respect border-radius */
   }
 }
 

@@ -1,7 +1,7 @@
 
 import Link from "next/link";
 import { format } from "date-fns";
-import { Edit3, FileText, Trash2, Share2 } from "lucide-react"; // Removed LayoutDashboard
+import { Edit3, FileText, Trash2, Share2, LayoutDashboard } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -31,6 +31,9 @@ interface ProjectCardProps {
 }
 
 export function ProjectCard({ project, onDeleteProject, onShareProject }: ProjectCardProps) {
+  const textSnippet = project.textContent?.replace(/<[^>]+>/g, ' ').trim(); // Strip HTML for snippet
+  const whiteboardItemCount = project.whiteboardContent?.elements?.length || 0;
+
   return (
     <Card className="flex flex-col">
       <CardHeader>
@@ -39,17 +42,19 @@ export function ProjectCard({ project, onDeleteProject, onShareProject }: Projec
           Last updated: {format(new Date(project.updatedAt), "PPP p")}
         </CardDescription>
       </CardHeader>
-      <CardContent className="flex-grow">
-        <div className="flex items-center space-x-2 text-sm text-muted-foreground mb-2">
-          <FileText className="h-4 w-4" /> 
-          <span>{project.textContent ? `${project.textContent.substring(0,30)}...` : "Empty document"}</span>
+      <CardContent className="flex-grow space-y-2">
+        <div className="flex items-start space-x-2 text-sm text-muted-foreground">
+          <FileText className="h-4 w-4 mt-0.5 shrink-0" /> 
+          <span className="line-clamp-2 break-all">
+            {textSnippet ? `${textSnippet.substring(0, 60)}...` : "Empty document"}
+          </span>
         </div>
-        {/* Removed whiteboard content display
         <div className="flex items-center space-x-2 text-sm text-muted-foreground">
-          <LayoutDashboard className="h-4 w-4" />
-          <span>{project.whiteboardContent && project.whiteboardContent.elements.length > 0 ? `${project.whiteboardContent.elements.length} whiteboard items` : "Empty whiteboard"}</span>
+          <LayoutDashboard className="h-4 w-4 shrink-0" />
+          <span>
+            {whiteboardItemCount > 0 ? `${whiteboardItemCount} whiteboard item${whiteboardItemCount === 1 ? '' : 's'}` : "Empty whiteboard"}
+          </span>
         </div> 
-        */}
       </CardContent>
       <CardFooter className="flex justify-between">
         <Button asChild variant="default" size="sm">
