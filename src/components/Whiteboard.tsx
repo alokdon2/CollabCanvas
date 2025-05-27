@@ -10,10 +10,26 @@ import { Loader2 } from "lucide-react";
 import { useTheme } from "@/components/providers/ThemeProvider"; // For theme syncing
 
 // Dynamically import Excalidraw component
-const Excalidraw = dynamic(
-  async () => (await import("@excalidraw/excalidraw")).Excalidraw,
-  { ssr: false, loading: () => <div className="flex h-full w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /> <p className="ml-2">Loading Whiteboard...</p></div> }
+const DynamicallyLoadedExcalidraw = dynamic(
+  () => import("@excalidraw/excalidraw").then((mod) => {
+    if (!mod.Excalidraw) {
+      console.error("Excalidraw named export not found in @excalidraw/excalidraw module. Module keys:", Object.keys(mod));
+      // Return a dummy component or throw a more specific error
+      return () => <div className="flex h-full w-full items-center justify-center text-destructive-foreground bg-destructive p-4 rounded-lg">Failed to load Excalidraw component. Check console.</div>;
+    }
+    return mod.Excalidraw;
+  }),
+  { 
+    ssr: false, 
+    loading: () => (
+      <div className="flex h-full w-full items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" /> 
+        <p className="ml-2 text-muted-foreground">Loading Whiteboard...</p>
+      </div>
+    ) 
+  }
 );
+
 
 interface WhiteboardProps {
   initialData?: WhiteboardData | null;
@@ -49,6 +65,7 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
           zoom: appState.zoom,
           scrollX: appState.scrollX,
           scrollY: appState.scrollY,
+          // Potentially add other relevant appState fields if needed by the user
         };
         onChange({ elements, appState: minimalAppState, files });
       }
@@ -56,28 +73,39 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
     [onChange]
   );
   
-  const excalidrawKey = initialData ? JSON.stringify(initialData.elements.map(el => el.id + el.version).join()) : 'empty';
+  // Create a stable key based on element IDs and versions to help React manage re-renders
+  const excalidrawKey = initialData?.elements 
+    ? initialData.elements.map(el => `${el.id}_${el.version}`).join('-') 
+    : 'empty-whiteboard';
+
+  // Memoize initial data to prevent unnecessary re-initializations of Excalidraw
+  const currentInitialData = React.useMemo(() => {
+    return {
+      elements: initialData?.elements || [],
+      appState: initialData?.appState || { viewBackgroundColor: appTheme === 'dark' ? '#1A1B1E' : '#FFFFFF' }, // Darker for Excalidraw dark theme
+      files: initialData?.files || undefined, // Use undefined if null/empty for Excalidraw
+    };
+  }, [initialData, appTheme]);
 
 
   if (!isClient) {
-     return <div className="flex h-full w-full items-center justify-center"><Loader2 className="h-8 w-8 animate-spin" /> <p className="ml-2">Initializing Whiteboard...</p></div>;
+     return (
+      <div className="flex h-full w-full items-center justify-center rounded-lg border bg-card">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" /> 
+        <p className="ml-2 text-muted-foreground">Initializing Whiteboard...</p>
+      </div>
+    );
   }
 
   return (
     <div className="h-full w-full rounded-lg border bg-card text-card-foreground shadow-sm excalidraw-wrapper">
-      <Excalidraw
-        key={excalidrawKey} // Force re-render if initial elements change significantly
+      <DynamicallyLoadedExcalidraw
+        key={excalidrawKey} 
         excalidrawAPI={(api) => (excalidrawAPIRef.current = api)}
-        initialData={{
-          elements: initialData?.elements || [],
-          appState: initialData?.appState || { viewBackgroundColor: appTheme === 'dark' ? '#1a1a1a' : '#ffffff' },
-          files: initialData?.files || undefined,
-        }}
+        initialData={currentInitialData}
         onChange={debouncedOnChange}
         viewModeEnabled={isReadOnly}
-        theme={appTheme === 'dark' ? 'dark' : 'light'} // Sync Excalidraw theme with app theme
-        //ZenModeEnabled // Example prop
-        //GridModeEnabled // Example prop
+        theme={appTheme === 'dark' ? 'dark' : 'light'}
       />
     </div>
   );
