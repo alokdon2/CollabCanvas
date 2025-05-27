@@ -49,7 +49,7 @@ import TableCellExtension from '@tiptap/extension-table-cell';
 import TableHeaderExtension from '@tiptap/extension-table-header';
 
 // Lowlight and highlight.js for CodeBlockLowlight
-import { lowlight } from 'lowlight/lib/core';
+import { createLowlight } from 'lowlight'; // Changed import
 import javascript from 'highlight.js/lib/languages/javascript';
 import css from 'highlight.js/lib/languages/css';
 import html from 'highlight.js/lib/languages/xml'; // xml for html
@@ -61,6 +61,8 @@ import cpp from 'highlight.js/lib/languages/cpp';
 import php from 'highlight.js/lib/languages/php';
 import shell from 'highlight.js/lib/languages/shell';
 import markdown from 'highlight.js/lib/languages/markdown';
+
+const lowlight = createLowlight(); // Initialize lowlight
 
 // Register languages with lowlight
 lowlight.registerLanguage('javascript', javascript);
@@ -351,6 +353,10 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     try {
       const result: AutoFormatTextOutput = await autoFormatText({ textToFormat: text });
       if (selection) {
+        // For TipTap, it's better to insert HTML if the AI returns structured content (like Markdown)
+        // If autoFormatText returns plain text that *looks* like markdown, 
+        // TipTap might not render it as HTML automatically unless it's parsed.
+        // For now, assuming autoFormatText provides text that TipTap can digest or it's already HTML.
         editor.chain().focus().setTextSelection(selection).deleteSelection().insertContent(result.formattedText).run();
       } else {
         editor.commands.setContent(result.formattedText);
@@ -375,7 +381,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       const result: GenerateProjectSummaryOutput = await generateProjectSummary({ textDocumentContent: docText });
       setSummaryContent(result.summary);
       setIsSummaryDialogOpen(true);
-    } catch (error) {
+    } catch (error) { 
       console.error("AI summary error:", error);
       toast({ title: "AI Error", description: "Failed to generate summary. Please try again.", variant: "destructive" });
     } finally {
@@ -464,3 +470,4 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     </div>
   );
 }
+
