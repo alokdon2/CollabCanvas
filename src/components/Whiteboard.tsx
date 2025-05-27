@@ -5,7 +5,7 @@ import type { ExcalidrawImperativeAPI, ExcalidrawProps } from "@excalidraw/excal
 import type { ExcalidrawElement, AppState } from "@excalidraw/excalidraw/types/element/types";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types/types";
 
-import React, { useRef } from "react";
+import React, { useRef, useEffect, useState } from "react"; // Added useState
 import dynamic from 'next/dynamic';
 import { useTheme } from "@/components/providers/ThemeProvider";
 import type { WhiteboardData } from "@/lib/types";
@@ -14,6 +14,19 @@ interface WhiteboardComponentProps {
   initialData?: WhiteboardData | null;
   onChange?: (data: WhiteboardData) => void;
   isReadOnly?: boolean;
+}
+
+// Debounce helper function
+function debounce<T extends (...args: any[]) => any>(func: T, delay: number): (...args: Parameters<T>) => void {
+  let timeoutId: ReturnType<typeof setTimeout> | null;
+  return (...args: Parameters<T>) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => {
+      func(...args);
+    }, delay);
+  };
 }
 
 const DynamicExcalidraw = dynamic<ExcalidrawProps>(
@@ -33,7 +46,12 @@ const DynamicExcalidraw = dynamic<ExcalidrawProps>(
 
 export function Whiteboard({ initialData, onChange, isReadOnly = false }: WhiteboardComponentProps) {
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
-  const { theme } = useTheme(); // For dark/light mode consistency
+  const { theme } = useTheme();
+  const [isClient, setIsClient] = useState(false); // State to track client-side mount
+
+  useEffect(() => {
+    setIsClient(true); // Set to true after component has mounted
+  }, []);
 
   const UIOptions = {
     canvasActions: {
@@ -71,35 +89,28 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
         <h3 className="text-lg font-semibold">Whiteboard</h3>
       </div>
       <div style={{ height: "calc(100% - 65px)" }} className="w-full excalidraw-wrapper">
-        <DynamicExcalidraw
-          ref={excalidrawAPIRef}
-          initialData={{
-            elements: currentInitialData.elements,
-            appState: currentInitialData.appState,
-            files: currentInitialData.files,
-          }}
-          onChange={debouncedOnChange}
-          UIOptions={UIOptions}
-          viewModeEnabled={isReadOnly}
-          theme={theme}
-          detectScroll={false}
-          gridModeEnabled={ (currentInitialData.appState as any)?.gridModeEnabled ?? false }
-        />
+        {isClient ? ( // Only render DynamicExcalidraw if isClient is true
+          <DynamicExcalidraw
+            ref={excalidrawAPIRef}
+            initialData={{
+              elements: currentInitialData.elements,
+              appState: currentInitialData.appState,
+              files: currentInitialData.files,
+            }}
+            onChange={debouncedOnChange}
+            UIOptions={UIOptions}
+            viewModeEnabled={isReadOnly}
+            theme={theme}
+            detectScroll={false}
+            gridModeEnabled={ (currentInitialData.appState as any)?.gridModeEnabled ?? false }
+          />
+        ) : (
+          // Fallback UI before client mount (or use the same loading UI as dynamic import)
+          <div className="flex flex-col h-full items-center justify-center rounded-lg border bg-card text-card-foreground shadow-sm p-4">
+            <p className="text-muted-foreground">Initializing Whiteboard...</p>
+          </div>
+        )}
       </div>
     </div>
   );
 }
-
-// Debounce helper function
-function debounce<T extends (...args: any[]) => any>(func: T, delay: number): (...args: Parameters<T>) => void {
-  let timeoutId: ReturnType<typeof setTimeout> | null;
-  return (...args: Parameters<T>) => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-    timeoutId = setTimeout(() => {
-      func(...args);
-    }, delay);
-  };
-}
-
