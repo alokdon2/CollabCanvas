@@ -5,7 +5,8 @@ import type { ExcalidrawImperativeAPI, ExcalidrawProps } from "@excalidraw/excal
 import type { ExcalidrawElement, AppState } from "@excalidraw/excalidraw/types/element/types";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types/types";
 
-import React, { useEffect, useState, useRef } from "react";
+import React, { useRef } from "react";
+import dynamic from 'next/dynamic';
 import { useTheme } from "@/components/providers/ThemeProvider";
 import type { WhiteboardData } from "@/lib/types";
 
@@ -15,30 +16,25 @@ interface WhiteboardComponentProps {
   isReadOnly?: boolean;
 }
 
-// Note: The top-level dynamic import of ExcalidrawComponent that was here previously has been removed
-// as it was not directly used by the functional component's rendering logic and the useEffect below handles loading.
+const DynamicExcalidraw = dynamic<ExcalidrawProps>(
+  () => import('@excalidraw/excalidraw').then(mod => mod.Excalidraw as React.ComponentType<ExcalidrawProps>),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex flex-col h-full items-center justify-center rounded-lg border bg-card text-card-foreground shadow-sm p-4">
+        <p className="text-muted-foreground">Loading Whiteboard...</p>
+        <p className="text-xs text-muted-foreground mt-2">
+          The Excalidraw component is loading. Please ensure @excalidraw/excalidraw is installed and check console for errors.
+        </p>
+      </div>
+    ),
+  }
+);
 
 export function Whiteboard({ initialData, onChange, isReadOnly = false }: WhiteboardComponentProps) {
-  const [Excalidraw, setExcalidraw] = useState<React.ComponentType<ExcalidrawProps> | null>(null);
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const { theme } = useTheme(); // For dark/light mode consistency
 
-  useEffect(() => {
-    import("@excalidraw/excalidraw")
-      .then((module) => {
-        if (module && module.Excalidraw) {
-          setExcalidraw(() => module.Excalidraw); // Use functional update for setting state
-        } else {
-          console.error("Excalidraw dynamic import did not return the Excalidraw component correctly:", module);
-          // Optionally, set an error state here to inform the user
-        }
-      })
-      .catch(error => {
-        console.error("Failed to dynamically import Excalidraw:", error);
-        // Optionally, set an error state here
-      });
-  }, []); // Empty dependency array ensures this runs once on mount
-  
   const UIOptions = {
     canvasActions: {
       changeViewBackgroundColor: !isReadOnly,
@@ -46,7 +42,7 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
       export: true,
       loadScene: !isReadOnly,
       saveToActiveFile: !isReadOnly,
-      toggleTheme: true, 
+      toggleTheme: true,
       saveAsImage: true,
     },
   };
@@ -59,26 +55,15 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
       if (onChange) {
         onChange({
           elements,
-          appState: { 
-            ...appState, 
-            viewBackgroundColor: appState.viewBackgroundColor || '#ffffff' 
+          appState: {
+            ...appState,
+            viewBackgroundColor: appState.viewBackgroundColor || '#ffffff'
           },
           files,
         });
       }
     }, 500)
   ).current;
-
-  if (!Excalidraw) {
-    return (
-      <div className="flex flex-col h-full items-center justify-center rounded-lg border bg-card text-card-foreground shadow-sm p-4">
-        <p className="text-muted-foreground">Loading Whiteboard...</p>
-        <p className="text-xs text-muted-foreground mt-2">
-          This component uses @excalidraw/excalidraw. If it fails to load, please ensure the package is installed and check console for errors.
-        </p>
-      </div>
-    );
-  }
   
   return (
     <div className="flex flex-col h-full rounded-lg border bg-card text-card-foreground shadow-sm">
@@ -86,8 +71,8 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
         <h3 className="text-lg font-semibold">Whiteboard</h3>
       </div>
       <div style={{ height: "calc(100% - 65px)" }} className="w-full excalidraw-wrapper">
-        <Excalidraw
-          ref={(api: ExcalidrawImperativeAPI | null) => excalidrawAPIRef.current = api}
+        <DynamicExcalidraw
+          ref={excalidrawAPIRef}
           initialData={{
             elements: currentInitialData.elements,
             appState: currentInitialData.appState,
@@ -96,9 +81,9 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
           onChange={debouncedOnChange}
           UIOptions={UIOptions}
           viewModeEnabled={isReadOnly}
-          theme={theme} 
+          theme={theme}
           detectScroll={false}
-          gridModeEnabled={ (currentInitialData.appState as any)?.gridModeEnabled ?? false } 
+          gridModeEnabled={ (currentInitialData.appState as any)?.gridModeEnabled ?? false }
         />
       </div>
     </div>
@@ -117,3 +102,4 @@ function debounce<T extends (...args: any[]) => any>(func: T, delay: number): (.
     }, delay);
   };
 }
+
