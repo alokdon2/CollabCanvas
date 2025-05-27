@@ -35,8 +35,7 @@ export function CreateProjectDialog({ onCreateProject }: CreateProjectDialogProp
     const newProject: Project = {
       id: crypto.randomUUID(),
       name: projectName.trim(),
-      textContent: "",
-      // whiteboardContent removed
+      textContent: "<p></p>", // Initialize with an empty paragraph for TipTap
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

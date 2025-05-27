@@ -14,8 +14,7 @@ const initialProjects: Project[] = [
   {
     id: "1",
     name: "My First Project",
-    textContent: "This is the content of my first project's document.",
-    // whiteboardContent removed
+    textContent: "<p>This is the content of my first project's document.</p><p>You can <strong>bold</strong> text, make it <em>italic</em>, or create headings!</p><h1>Heading 1</h1><h2>Heading 2</h2><ul><li>Bullet list item 1</li><li>Bullet list item 2</li></ul><ol><li>Numbered list item 1</li><li>Numbered list item 2</li></ol>",
     createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date().toISOString(),
   },
