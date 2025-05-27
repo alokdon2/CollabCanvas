@@ -291,14 +291,14 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   const [imageUrl, setImageUrl] = useState("");
 
   const [isSlashCommandMenuOpen, setIsSlashCommandMenuOpen] = useState(false);
-  const slashCommandMenuTriggerRef = useRef<HTMLSpanElement>(null);
+  const slashCommandMenuTriggerRef = useRef<HTMLButtonElement>(null); // Changed to button ref for clarity but not strictly necessary for asChild
 
 
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
         codeBlock: false, 
-        hardBreak: false, // Use HardBreak extension for more control if needed
+        hardBreak: false, 
         horizontalRule: false,
       }),
       Placeholder.configure({
@@ -315,28 +315,22 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       TableRowExtension,
       TableCellExtension,
       TableHeaderExtension,
-      HardBreak, // Allows Shift+Enter for hard breaks
-      HorizontalRule, // For dividers
+      HardBreak, 
+      HorizontalRule,
     ],
     content: value?.trim() ? value : "<p></p>",
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
-      // Slash command trigger logic
       const { selection } = editor.state;
+
       if (selection.empty && selection.anchor > 1) {
         const textBeforeCursor = editor.state.doc.textBetween(selection.anchor - 2, selection.anchor, "\n");
         if (textBeforeCursor === "/ ") {
-          if (!isSlashCommandMenuOpen) { // Only open if not already open
-            setIsSlashCommandMenuOpen(true); // Removed setTimeout
+          editor.chain().focus().deleteRange({ from: selection.anchor - 2, to: selection.anchor }).run();
+          if (!isSlashCommandMenuOpen) {
+            setIsSlashCommandMenuOpen(true);
           }
-        } else {
-          if (isSlashCommandMenuOpen) {
-            setIsSlashCommandMenuOpen(false);
-          }
-        }
-      } else {
-        if (isSlashCommandMenuOpen) {
-          setIsSlashCommandMenuOpen(false);
+          return; 
         }
       }
     },
@@ -476,11 +470,9 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
 
   const executeSlashCommand = (commandAction: (editor: Editor) => void) => {
     if (!editor) return;
-    // Delete the "/ " trigger
-    const { from } = editor.state.selection;
-    editor.chain().focus().deleteRange({ from: from - 2, to: from }).run();
+    // Trigger text is already removed by onUpdate
     commandAction(editor);
-    setIsSlashCommandMenuOpen(false);
+    // DropdownMenu onOpenChange will set isSlashCommandMenuOpen to false
   };
 
 
@@ -488,12 +480,14 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     <div className="flex flex-col h-full rounded-lg border bg-card text-card-foreground shadow-sm">
       <DropdownMenu open={isSlashCommandMenuOpen} onOpenChange={setIsSlashCommandMenuOpen}>
         <DropdownMenuTrigger ref={slashCommandMenuTriggerRef} asChild>
-          {/* This span is a hidden trigger, the menu is controlled programmatically */}
-          <span style={{ position: 'absolute', top: '-9999px', left: '-9999px' }} />
+          {/* This span is part of the normal DOM flow but not visible.
+              DropdownMenuContent positions itself relative to this trigger's coordinates. */}
+          <span></span>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           className="w-60"
-          onCloseAutoFocus={(e) => editor?.commands.focus()} // Return focus to editor
+          onOpenAutoFocus={(e) => e.preventDefault()} // Prevent focus stealing
+          onCloseAutoFocus={(e) => editor?.chain().focus().run()} // Return focus to editor
         >
           {slashCommands.map((command, index) => (
             <DropdownMenuItem
