@@ -1,3 +1,4 @@
+
 "use client";
 
 import type { ExcalidrawImperativeAPI, ExcalidrawProps } from "@excalidraw/excalidraw/types/types";
@@ -14,14 +15,8 @@ interface WhiteboardComponentProps {
   isReadOnly?: boolean;
 }
 
-// Dynamically import Excalidraw to ensure it's client-side only
-let ExcalidrawComponent: React.ComponentType<ExcalidrawProps> | null = null;
-if (typeof window !== "undefined") {
-  import("@excalidraw/excalidraw").then((module) => {
-    ExcalidrawComponent = module.Excalidraw;
-  });
-}
-
+// Note: The top-level dynamic import of ExcalidrawComponent that was here previously has been removed
+// as it was not directly used by the functional component's rendering logic and the useEffect below handles loading.
 
 export function Whiteboard({ initialData, onChange, isReadOnly = false }: WhiteboardComponentProps) {
   const [Excalidraw, setExcalidraw] = useState<React.ComponentType<ExcalidrawProps> | null>(null);
@@ -29,10 +24,20 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
   const { theme } = useTheme(); // For dark/light mode consistency
 
   useEffect(() => {
-    import("@excalidraw/excalidraw").then((module) => {
-      setExcalidraw(() => module.Excalidraw); // Use functional update for setting state based on dynamic import
-    });
-  }, []);
+    import("@excalidraw/excalidraw")
+      .then((module) => {
+        if (module && module.Excalidraw) {
+          setExcalidraw(() => module.Excalidraw); // Use functional update for setting state
+        } else {
+          console.error("Excalidraw dynamic import did not return the Excalidraw component correctly:", module);
+          // Optionally, set an error state here to inform the user
+        }
+      })
+      .catch(error => {
+        console.error("Failed to dynamically import Excalidraw:", error);
+        // Optionally, set an error state here
+      });
+  }, []); // Empty dependency array ensures this runs once on mount
   
   const UIOptions = {
     canvasActions: {
@@ -41,7 +46,7 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
       export: true,
       loadScene: !isReadOnly,
       saveToActiveFile: !isReadOnly,
-      toggleTheme: true, // Let Excalidraw handle its own theme toggle, or sync with app theme
+      toggleTheme: true, 
       saveAsImage: true,
     },
   };
@@ -56,7 +61,6 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
           elements,
           appState: { 
             ...appState, 
-            // Ensure viewBackgroundColor is serializable if it's part of the state to save
             viewBackgroundColor: appState.viewBackgroundColor || '#ffffff' 
           },
           files,
@@ -70,7 +74,7 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
       <div className="flex flex-col h-full items-center justify-center rounded-lg border bg-card text-card-foreground shadow-sm p-4">
         <p className="text-muted-foreground">Loading Whiteboard...</p>
         <p className="text-xs text-muted-foreground mt-2">
-          This component uses @excalidraw/excalidraw. If it fails to load, please ensure the package is installed.
+          This component uses @excalidraw/excalidraw. If it fails to load, please ensure the package is installed and check console for errors.
         </p>
       </div>
     );
@@ -92,9 +96,8 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
           onChange={debouncedOnChange}
           UIOptions={UIOptions}
           viewModeEnabled={isReadOnly}
-          theme={theme} // Sync Excalidraw theme with app theme
+          theme={theme} 
           detectScroll={false}
-          // Ensure gridModeEnabled is part of appState if you want to persist it
           gridModeEnabled={ (currentInitialData.appState as any)?.gridModeEnabled ?? false } 
         />
       </div>
