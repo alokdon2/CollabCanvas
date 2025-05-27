@@ -49,7 +49,7 @@ import TableCellExtension from '@tiptap/extension-table-cell';
 import TableHeaderExtension from '@tiptap/extension-table-header';
 
 // Lowlight and highlight.js for CodeBlockLowlight
-import { createLowlight } from 'lowlight'; // Changed import
+import { createLowlight } from 'lowlight'; 
 import javascript from 'highlight.js/lib/languages/javascript';
 import css from 'highlight.js/lib/languages/css';
 import html from 'highlight.js/lib/languages/xml'; // xml for html
@@ -62,27 +62,29 @@ import php from 'highlight.js/lib/languages/php';
 import shell from 'highlight.js/lib/languages/shell';
 import markdown from 'highlight.js/lib/languages/markdown';
 
-const lowlight = createLowlight(); // Initialize lowlight
+// Create a grammars map for lowlight
+const grammars = {
+  javascript,
+  js: javascript,
+  css,
+  html,
+  xml: html,
+  typescript,
+  ts: typescript,
+  python,
+  py: python,
+  java,
+  csharp,
+  cs: csharp,
+  cpp,
+  php,
+  shell,
+  sh: shell,
+  markdown,
+  md: markdown,
+};
 
-// Register languages with lowlight
-lowlight.registerLanguage('javascript', javascript);
-lowlight.registerLanguage('js', javascript);
-lowlight.registerLanguage('css', css);
-lowlight.registerLanguage('html', html);
-lowlight.registerLanguage('xml', html);
-lowlight.registerLanguage('typescript', typescript);
-lowlight.registerLanguage('ts', typescript);
-lowlight.registerLanguage('python', python);
-lowlight.registerLanguage('py', python);
-lowlight.registerLanguage('java', java);
-lowlight.registerLanguage('csharp', csharp);
-lowlight.registerLanguage('cs', csharp);
-lowlight.registerLanguage('cpp', cpp);
-lowlight.registerLanguage('php', php);
-lowlight.registerLanguage('shell', shell);
-lowlight.registerLanguage('sh', shell);
-lowlight.registerLanguage('markdown', markdown);
-lowlight.registerLanguage('md', markdown);
+const lowlightInstance = createLowlight(grammars);
 
 
 interface RichTextEditorProps {
@@ -272,7 +274,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
         codeBlock: false, // Disable default to use CodeBlockLowlight
       }),
       CodeBlockLowlight.configure({
-        lowlight,
+        lowlight: lowlightInstance,
       }),
       ImageExtension,
       TableExtension.configure({
@@ -295,14 +297,26 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
 
   useEffect(() => {
     if (editor) {
-      const isSame = editor.getHTML() === value;
-      if (isSame) {
+      // Avoid re-setting content if it's already the same, which can lose cursor position
+      // or trigger unnecessary updates.
+      // Check if the current editor content (HTML) is different from the incoming `value` prop.
+      const currentHTML = editor.getHTML();
+      if (currentHTML === value) {
         return;
       }
+      // Only set content if it's different. Store selection before and restore after.
       const { from, to } = editor.state.selection;
-      editor.commands.setContent(value, false); 
+      editor.commands.setContent(value, false); // `false` means don't emit update
+      
+      // Attempt to restore selection if the editor is focused.
+      // This might not always be perfect, especially if content length changes drastically.
       if (editor.isFocused) {
-        editor.commands.setTextSelection({ from, to });
+         try {
+            editor.commands.setTextSelection({ from, to });
+         } catch (e) {
+            // If restoring selection fails (e.g., out of bounds), set cursor to end.
+            editor.commands.focus('end');
+         }
       }
     }
   }, [value, editor]);
@@ -381,7 +395,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       const result: GenerateProjectSummaryOutput = await generateProjectSummary({ textDocumentContent: docText });
       setSummaryContent(result.summary);
       setIsSummaryDialogOpen(true);
-    } catch (error) { 
+    } catch (error) {
       console.error("AI summary error:", error);
       toast({ title: "AI Error", description: "Failed to generate summary. Please try again.", variant: "destructive" });
     } finally {
