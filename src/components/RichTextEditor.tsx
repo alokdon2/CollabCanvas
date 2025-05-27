@@ -39,11 +39,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+} from "@/components/ui/popover";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from './ui/textarea';
 
@@ -291,7 +290,8 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   const [imageUrl, setImageUrl] = useState("");
 
   const [isSlashCommandMenuOpen, setIsSlashCommandMenuOpen] = useState(false);
-  const slashCommandMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  const [slashCommandAnchorPos, setSlashCommandAnchorPos] = useState<{ top: number; left: number } | null>(null);
+  const editorWrapperRef = useRef<HTMLDivElement>(null);
 
 
   const editor = useEditor({
@@ -322,22 +322,35 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
       const { selection } = editor.state;
+      const { from, to } = selection;
 
-      if (selection.empty && selection.anchor > 1) {
-        const textBeforeCursor = editor.state.doc.textBetween(selection.anchor - 2, selection.anchor, "\n");
+      if (selection.empty && from > 1) { // from > 1 to avoid issues at the very start
+        const textBeforeCursor = editor.state.doc.textBetween(from - 2, from, "\n");
         if (textBeforeCursor === "/ ") {
-          editor.chain().focus().deleteRange({ from: selection.anchor - 2, to: selection.anchor }).run();
-          if (!isSlashCommandMenuOpen) {
-            setIsSlashCommandMenuOpen(true);
+          const coords = editor.view.coordsAtPos(from);
+          const wrapperRect = editorWrapperRef.current?.getBoundingClientRect();
+
+          if (wrapperRect) {
+            const anchorTop = coords.bottom - wrapperRect.top;
+            const anchorLeft = coords.left - wrapperRect.left;
+            setSlashCommandAnchorPos({ top: anchorTop, left: anchorLeft });
+          } else {
+             // Fallback if wrapperRect is not available (e.g., initial render)
+            setSlashCommandAnchorPos({ top: coords.bottom, left: coords.left });
           }
+          
+          setIsSlashCommandMenuOpen(true);
+          // Important: Delete after setting open, so focus isn't lost to a non-existent menu
+          editor.chain().focus().deleteRange({ from: from - 2, to }).run();
           return; 
         }
       }
-       if (isSlashCommandMenuOpen && selection.anchor > 0) {
-        const textBeforeCursor = editor.state.doc.textBetween(selection.anchor - 2, selection.anchor, "\n");
-        if (textBeforeCursor !== "/ ") {
-            // setIsSlashCommandMenuOpen(false); // This might be too aggressive, handled by DropdownMenu's onOpenChange
-        }
+      // Close menu if text no longer matches or selection changes
+      if (isSlashCommandMenuOpen) {
+         const textBeforeCursor = editor.state.doc.textBetween(from - 2, from, "\n");
+         if (textBeforeCursor !== "/ " || !selection.empty) {
+            // setIsSlashCommandMenuOpen(false); // Handled by Popover onOpenChange or blur
+         }
       }
     },
     editorProps: {
@@ -356,14 +369,19 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       if (currentHTML !== newContent) {
         const { from, to } = editor.state.selection;
         editor.commands.setContent(newContent, false);
-        if (editor.isFocused && newContent !== "<p></p>") {
+        // Only try to restore selection if editor is focused and content is not the initial empty paragraph
+        if (editor.isFocused && newContent !== "<p></p>") { 
            try {
+              // Ensure selection range is valid before applying
               if (from <= editor.state.doc.content.size && to <= editor.state.doc.content.size) {
                 editor.commands.setTextSelection({ from, to });
               } else {
+                // Fallback: focus at the end if the previous selection is no longer valid
                 editor.commands.focus('end');
               }
            } catch (e) {
+              // Catch any errors during selection setting and focus at the end
+              // console.warn("Error setting text selection, focusing end.", e);
               editor.commands.focus('end');
            }
         }
@@ -477,34 +495,46 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   const executeSlashCommand = (commandAction: (editor: Editor) => void) => {
     if (!editor) return;
     commandAction(editor);
+    // setIsSlashCommandMenuOpen(false); // Popover's onOpenChange will handle this
   };
 
 
   return (
-    <div className="relative flex flex-col h-full rounded-lg border bg-card text-card-foreground shadow-sm">
-      <DropdownMenu open={isSlashCommandMenuOpen} onOpenChange={setIsSlashCommandMenuOpen}>
-        <DropdownMenuTrigger ref={slashCommandMenuTriggerRef} asChild>
-          {/* This span is part of the normal DOM flow but not visible.
-              DropdownMenuContent positions itself relative to this trigger's coordinates. */}
-          <span></span>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          className="w-60"
-          onCloseAutoFocus={(e) => editor?.chain().focus().run()} // Return focus to editor
+    <div ref={editorWrapperRef} className="relative flex flex-col h-full rounded-lg border bg-card text-card-foreground shadow-sm">
+      <Popover open={isSlashCommandMenuOpen} onOpenChange={setIsSlashCommandMenuOpen}>
+        <PopoverAnchor
+          style={{
+            position: 'absolute',
+            top: `${slashCommandAnchorPos?.top ?? 0}px`,
+            left: `${slashCommandAnchorPos?.left ?? 0}px`,
+            width: 0,
+            height: 0,
+          }}
+        />
+        <PopoverContent
+          className="w-60 p-1"
+          sideOffset={5}
+          align="start"
+          onCloseAutoFocus={() => editor?.chain().focus().run()}
+          // onOpenAutoFocus={(e) => e.preventDefault()} // Removed to allow PopoverContent/items to take focus
         >
           {slashCommands.map((command, index) => (
-            <DropdownMenuItem
+            <button
               key={index}
-              onSelect={() => executeSlashCommand(command.action)}
-              className="flex items-center gap-2"
+              onClick={() => executeSlashCommand(command.action)}
+              className="flex items-center gap-2 w-full p-2 text-sm rounded-sm hover:bg-accent focus:bg-accent focus:outline-none"
+              // role="menuitem" // Radix might handle this for button children of PopoverContent
+              // tabIndex={-1} // For roving tabindex, but direct buttons are simpler
             >
               <command.icon className="h-4 w-4" />
               <span>{command.label}</span>
-            </DropdownMenuItem>
+            </button>
           ))}
-          {slashCommands.length === 0 && <DropdownMenuItem disabled>No commands found</DropdownMenuItem>}
-        </DropdownMenuContent>
-      </DropdownMenu>
+          {slashCommands.length === 0 && (
+            <div className="p-2 text-sm text-muted-foreground">No commands found</div>
+          )}
+        </PopoverContent>
+      </Popover>
       
       <TipTapToolbar
         editor={editor}
@@ -571,4 +601,3 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     </div>
   );
 }
-
