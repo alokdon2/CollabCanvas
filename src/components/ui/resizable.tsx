@@ -29,8 +29,32 @@ ResizablePanelGroup.displayName = "ResizablePanelGroup"
 
 const ResizablePanel = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & { defaultSize?: number, minSize?: number, maxSize?: number, id?: string, order?: string, collapsible?: boolean, onCollapse?: () => void, onExpand?: () => void, collapsedSize?: number}
->(({ className, children, style, defaultSize, ...props }, ref) => {
+  React.HTMLAttributes<HTMLDivElement> & { 
+    defaultSize?: number;
+    minSize?: number; 
+    maxSize?: number; 
+    id?: string; 
+    order?: string; 
+    collapsible?: boolean; 
+    onCollapse?: () => void; 
+    onExpand?: () => void; 
+    collapsedSize?: number;
+  }
+>(({ 
+  className, 
+  children, 
+  style, 
+  defaultSize, 
+  minSize, // Destructure to prevent passing to div
+  maxSize, // Destructure
+  id,      // Destructure
+  order,   // Destructure
+  collapsible, // Destructure
+  onCollapse,  // Destructure
+  onExpand,    // Destructure
+  collapsedSize, // Destructure
+  ...props 
+}, ref) => {
   // Attempt to respect defaultSize for basic layout, but true resizing won't work.
   const flexStyle: React.CSSProperties = { ...style };
   if (typeof defaultSize === 'number') {
