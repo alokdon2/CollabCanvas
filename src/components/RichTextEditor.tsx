@@ -327,8 +327,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
         const textBeforeCursor = editor.state.doc.textBetween(selection.anchor - 2, selection.anchor, "\n");
         if (textBeforeCursor === "/ ") {
           if (!isSlashCommandMenuOpen) { // Only open if not already open
-            // Timeout to allow DropdownMenu to register itself before attempting to open
-            setTimeout(() => setIsSlashCommandMenuOpen(true), 0);
+            setIsSlashCommandMenuOpen(true); // Removed setTimeout
           }
         } else {
           if (isSlashCommandMenuOpen) {
