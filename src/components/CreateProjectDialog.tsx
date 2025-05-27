@@ -36,7 +36,7 @@ export function CreateProjectDialog({ onCreateProject }: CreateProjectDialogProp
       id: crypto.randomUUID(),
       name: projectName.trim(),
       textContent: "<p></p>", // Initialize with an empty paragraph for TipTap
-      whiteboardContent: { elements: [], appState: { viewBackgroundColor: "#ffffff" } }, // Initialize with empty whiteboard
+      whiteboardContent: null, // Initialize with null to let Excalidraw use its defaults
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
