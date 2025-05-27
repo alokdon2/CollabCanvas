@@ -4,10 +4,10 @@
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types/types";
 import type { ExcalidrawElement, AppState, BinaryFiles } from "@excalidraw/excalidraw/types/element/types";
 import type { WhiteboardData } from "@/lib/types";
-import React, { useEffect, useState, useRef, useCallback } from "react"; // Added React import
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
-import { useTheme } from "@/components/providers/ThemeProvider"; // For theme syncing
+// import { useTheme } from "@/components/providers/ThemeProvider"; // Temporarily remove
 
 // Dynamically import Excalidraw component
 const DynamicallyLoadedExcalidraw = dynamic(
@@ -40,7 +40,7 @@ interface WhiteboardProps {
 export function Whiteboard({ initialData, onChange, isReadOnly = false }: WhiteboardProps) {
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const [isClient, setIsClient] = useState(false);
-  const { theme: appTheme } = useTheme(); // Get app's current theme
+  // const { theme: appTheme } = useTheme(); // Temporarily remove
 
   useEffect(() => {
     setIsClient(true);
@@ -65,7 +65,6 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
           zoom: appState.zoom,
           scrollX: appState.scrollX,
           scrollY: appState.scrollY,
-          // Potentially add other relevant appState fields if needed by the user
         };
         onChange({ elements, appState: minimalAppState, files });
       }
@@ -73,19 +72,15 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
     [onChange]
   );
   
-  // Create a stable key based on element IDs and versions to help React manage re-renders
-  // const excalidrawKey = initialData?.elements 
-  //   ? initialData.elements.map(el => `${el.id}_${el.version}`).join('-') 
-  //   : 'empty-whiteboard';
-
-  // Memoize initial data to prevent unnecessary re-initializations of Excalidraw
   const currentInitialData = React.useMemo(() => {
     return {
       elements: initialData?.elements || [],
-      appState: initialData?.appState || { viewBackgroundColor: appTheme === 'dark' ? '#1A1B1E' : '#FFFFFF' }, // Darker for Excalidraw dark theme
-      files: initialData?.files || undefined, // Use undefined if null/empty for Excalidraw
+      // Temporarily use a static background color, remove appTheme dependency
+      appState: initialData?.appState || { viewBackgroundColor: '#FFFFFF' }, 
+      files: initialData?.files || undefined,
     };
-  }, [initialData, appTheme]);
+  // }, [initialData, appTheme]); // Temporarily remove appTheme
+  }, [initialData]);
 
 
   if (!isClient) {
@@ -105,7 +100,7 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
         initialData={currentInitialData}
         onChange={debouncedOnChange}
         viewModeEnabled={isReadOnly}
-        theme={appTheme === 'dark' ? 'dark' : 'light'}
+        // theme={appTheme === 'dark' ? 'dark' : 'light'} // Temporarily remove
       />
     </div>
   );
