@@ -4,9 +4,10 @@
 import { useState } from 'react';
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
-import { Sparkles, AlignLeft, Loader2 } from "lucide-react";
+import { Sparkles, AlignLeft, Loader2, Pilcrow } from "lucide-react"; // Added Pilcrow for auto-format
 import { AITextEnhancementDialog } from "./AITextEnhancementDialog";
 import { generateProjectSummary, type GenerateProjectSummaryOutput } from "@/ai/flows/generate-project-summary";
+import { autoFormatText, type AutoFormatTextOutput } from "@/ai/flows/autoformat-text-flow"; // Added new flow import
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -21,7 +22,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 interface RichTextEditorProps {
   value: string;
   onChange: (value: string) => void;
-  onEnhancedText: (enhancedText: string) => void;
+  onEnhancedText: (enhancedText: string) => void; // This can be used for auto-formatting as well
 }
 
 export function RichTextEditor({ value, onChange, onEnhancedText }: RichTextEditorProps) {
@@ -31,29 +32,33 @@ export function RichTextEditor({ value, onChange, onEnhancedText }: RichTextEdit
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
   const [summaryContent, setSummaryContent] = useState("");
   const [isSummarizing, setIsSummarizing] = useState(false);
+
+  const [isAutoFormatting, setIsAutoFormatting] = useState(false); // State for auto-formatting loading
+
   const { toast } = useToast();
 
-  const handleAIButtonClick = () => {
+  const getSelectedTextOrFullDocument = () => {
     const textareaElement = document.getElementById("rich-text-area") as HTMLTextAreaElement;
     let currentSelection = "";
     if (textareaElement) {
       currentSelection = textareaElement.value.substring(textareaElement.selectionStart, textareaElement.selectionEnd);
     }
-    setSelectedTextForAI(currentSelection || value); // Use selection or full text
+    return currentSelection || value; // Use selection or full text
+  };
+
+  const handleAIButtonClick = () => {
+    setSelectedTextForAI(getSelectedTextOrFullDocument());
     setIsAIDialogOpen(true);
   };
 
   const handleApplyEnhancedText = (enhancedText: string) => {
-    // If selectedTextForAI was specifically chosen (not the full document fallback)
-    // and it exists in the current value, replace it.
-    // Otherwise, replace the whole content. This logic is a bit simplified.
-    if (selectedTextForAI && selectedTextForAI !== value && value.includes(selectedTextForAI)) {
-        onChange(value.replace(selectedTextForAI, enhancedText));
+    const textToReplace = selectedTextForAI;
+    if (textToReplace && textToReplace !== value && value.includes(textToReplace)) {
+        onChange(value.replace(textToReplace, enhancedText));
     } else {
-        // Fallback to replacing entire content
         onChange(enhancedText); 
     }
-    onEnhancedText(enhancedText); // Notify parent
+    onEnhancedText(enhancedText);
   };
 
   const handleSummarizeDocument = async () => {
@@ -75,15 +80,49 @@ export function RichTextEditor({ value, onChange, onEnhancedText }: RichTextEdit
     }
   };
 
+  const handleAutoFormatDocument = async () => {
+    const textToFormat = getSelectedTextOrFullDocument();
+    if (!textToFormat.trim()) {
+      toast({ title: "Cannot Auto-Format", description: "There is no text to format.", variant: "destructive" });
+      return;
+    }
+    setIsAutoFormatting(true);
+    setSelectedTextForAI(textToFormat); // Store the text that will be replaced
+
+    try {
+      const result: AutoFormatTextOutput = await autoFormatText({ textToFormat });
+      if (selectedTextForAI && selectedTextForAI !== value && value.includes(selectedTextForAI)) {
+        onChange(value.replace(selectedTextForAI, result.formattedText));
+      } else {
+         onChange(result.formattedText);
+      }
+      onEnhancedText(result.formattedText); // Notify parent of change
+
+      toast({
+        title: "AI Auto-Format Successful",
+        description: result.explanation || "The text has been auto-formatted.",
+      });
+    } catch (error) {
+      console.error("AI auto-formatting error:", error);
+      toast({ title: "AI Error", description: "Failed to auto-format text. Please try again.", variant: "destructive" });
+    } finally {
+      setIsAutoFormatting(false);
+    }
+  };
+
   return (
     <div className="flex flex-col h-full rounded-lg border bg-card text-card-foreground shadow-sm">
-      <div className="p-2 border-b flex justify-between items-center gap-2">
+      <div className="p-2 border-b flex justify-between items-center gap-1 flex-wrap">
         <h3 className="text-lg font-semibold px-2">Document</h3>
-        <div className="flex items-center gap-2">
-          <Button onClick={handleAIButtonClick} variant="outline" size="sm" disabled={!value.trim()}>
+        <div className="flex items-center gap-1 flex-wrap">
+          <Button onClick={handleAIButtonClick} variant="outline" size="sm" disabled={!value.trim() || isAutoFormatting || isSummarizing}>
             <Sparkles className="mr-2 h-4 w-4" /> AI Enhance
           </Button>
-          <Button onClick={handleSummarizeDocument} variant="outline" size="sm" disabled={!value.trim() || isSummarizing}>
+          <Button onClick={handleAutoFormatDocument} variant="outline" size="sm" disabled={!value.trim() || isAutoFormatting || isSummarizing}>
+            {isAutoFormatting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Pilcrow className="mr-2 h-4 w-4" />}
+            AI Auto-Format
+          </Button>
+          <Button onClick={handleSummarizeDocument} variant="outline" size="sm" disabled={!value.trim() || isSummarizing || isAutoFormatting}>
             {isSummarizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <AlignLeft className="mr-2 h-4 w-4" />}
             Summarize
           </Button>
