@@ -108,7 +108,7 @@
     --secondary-foreground: 0 0% 95%;
 
     --muted: 220 15% 20%;
-    --muted-foreground: 0 0% 65%;
+    --muted-foreground: 0 0% 65%; /* Adjusted for better visibility in dark mode placeholder */
 
     --accent: 17 100% 65%; /* Adjusted Soft Orange */
     --accent-foreground: 0 0% 10%; /* Dark Gray/Black */
@@ -184,6 +184,16 @@
     /* Table styling */
     --tw-prose-thead: hsl(var(--foreground));
     --tw-prose-tbody: hsl(var(--foreground));
+  }
+
+  /* TipTap Placeholder styles */
+  .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    color: hsl(var(--muted-foreground)); /* Use theme's muted-foreground color */
+    pointer-events: none;
+    height: 0;
+    @apply opacity-50; /* Make it a bit more subtle */
   }
 
   /* TipTap Table specific styles */
