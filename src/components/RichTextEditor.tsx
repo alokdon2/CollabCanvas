@@ -291,7 +291,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   const [imageUrl, setImageUrl] = useState("");
 
   const [isSlashCommandMenuOpen, setIsSlashCommandMenuOpen] = useState(false);
-  const slashCommandMenuTriggerRef = useRef<HTMLButtonElement>(null); // Changed to button ref for clarity but not strictly necessary for asChild
+  const slashCommandMenuTriggerRef = useRef<HTMLButtonElement>(null);
 
 
   const editor = useEditor({
@@ -331,6 +331,12 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
             setIsSlashCommandMenuOpen(true);
           }
           return; 
+        }
+      }
+       if (isSlashCommandMenuOpen && selection.anchor > 0) {
+        const textBeforeCursor = editor.state.doc.textBetween(selection.anchor - 2, selection.anchor, "\n");
+        if (textBeforeCursor !== "/ ") {
+            // setIsSlashCommandMenuOpen(false); // This might be too aggressive, handled by DropdownMenu's onOpenChange
         }
       }
     },
@@ -470,14 +476,12 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
 
   const executeSlashCommand = (commandAction: (editor: Editor) => void) => {
     if (!editor) return;
-    // Trigger text is already removed by onUpdate
     commandAction(editor);
-    // DropdownMenu onOpenChange will set isSlashCommandMenuOpen to false
   };
 
 
   return (
-    <div className="flex flex-col h-full rounded-lg border bg-card text-card-foreground shadow-sm">
+    <div className="relative flex flex-col h-full rounded-lg border bg-card text-card-foreground shadow-sm">
       <DropdownMenu open={isSlashCommandMenuOpen} onOpenChange={setIsSlashCommandMenuOpen}>
         <DropdownMenuTrigger ref={slashCommandMenuTriggerRef} asChild>
           {/* This span is part of the normal DOM flow but not visible.
@@ -486,7 +490,6 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
         </DropdownMenuTrigger>
         <DropdownMenuContent
           className="w-60"
-          onOpenAutoFocus={(e) => e.preventDefault()} // Prevent focus stealing
           onCloseAutoFocus={(e) => editor?.chain().focus().run()} // Return focus to editor
         >
           {slashCommands.map((command, index) => (
