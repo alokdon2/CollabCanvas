@@ -7,10 +7,11 @@ import type { ExcalidrawElement, AppState, BinaryFiles } from "@excalidraw/excal
 import type { WhiteboardData } from "@/lib/types";
 import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
+// import { useTheme } from "@/components/providers/ThemeProvider"; // Theme integration temporarily removed
 
 interface WhiteboardProps {
-  initialData?: WhiteboardData | null; // Allow null for initialData
-  onChange?: (data: WhiteboardData) => void;
+  initialData?: WhiteboardData | null; // This prop will be effectively ignored for now
+  onChange?: (data: WhiteboardData) => void; // This prop will not be called for now
   isReadOnly?: boolean;
 }
 
@@ -19,7 +20,6 @@ const DynamicallyLoadedExcalidraw = dynamic(
   () => import("@excalidraw/excalidraw").then((mod) => {
     if (!mod.Excalidraw) {
       console.error("Excalidraw named export not found in @excalidraw/excalidraw module. Module keys:", Object.keys(mod));
-      // Return a dummy component or throw a more specific error
       return () => <div className="flex h-full w-full items-center justify-center text-destructive-foreground bg-destructive p-4 rounded-lg">Failed to load Excalidraw component. Check console.</div>;
     }
     return mod.Excalidraw;
@@ -36,9 +36,14 @@ const DynamicallyLoadedExcalidraw = dynamic(
 );
 
 
-export function Whiteboard({ initialData, onChange, isReadOnly = false }: WhiteboardProps) {
+export function Whiteboard({ 
+  // initialData prop is received but will be overridden below
+  // onChange prop is received but will not be called by debouncedOnChange
+  isReadOnly = false 
+}: WhiteboardProps) {
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const [isClient, setIsClient] = useState(false);
+  // const { theme: appTheme } = useTheme(); // Theme integration temporarily removed
 
   useEffect(() => {
     setIsClient(true);
@@ -46,13 +51,18 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
 
   // Debounce onChange to avoid excessive updates
   const debouncedOnChange = useCallback(
-    (elements: readonly ExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
-      if (onChange) {
-        // Pass the full appState object
-        onChange({ elements, appState, files });
-      }
+    (
+      _elements: readonly ExcalidrawElement[], // Parameter is unused
+      _appState: AppState, // Parameter is unused
+      _files: BinaryFiles // Parameter is unused
+    ) => {
+      // Do nothing to prevent saving data, per user request for debugging.
+      // This means the onChange prop passed from ProjectPage will not be called.
+      // if (onChange) {
+      //   onChange({ elements, appState, files });
+      // }
     },
-    [onChange]
+    [] // No dependencies needed as the callback does nothing with external state/props
   );
 
   if (!isClient) {
@@ -65,16 +75,26 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
       </div>
     );
   }
+  
+  // Always use a fresh, minimal, blank JSON object for Excalidraw's initialData
+  const freshInitialData: WhiteboardData = {
+    elements: [],
+    appState: {
+      // You can set a default background or other appState properties here if needed
+      // viewBackgroundColor: appTheme === 'dark' ? '#202124' : '#FFFFFF', // Example if theme was used
+    }, 
+    files: {}
+  };
 
   return (
     <div className="h-full w-full rounded-lg border bg-card text-card-foreground shadow-sm excalidraw-wrapper">
       <DynamicallyLoadedExcalidraw
         excalidrawAPI={(api) => (excalidrawAPIRef.current = api)}
-        initialData={initialData || undefined} // Pass initialData directly, or undefined if null/falsy to let Excalidraw use its defaults
-        onChange={debouncedOnChange}
+        initialData={freshInitialData} // Always pass a fresh, blank object
+        onChange={debouncedOnChange} // This will not propagate changes to the parent
         viewModeEnabled={isReadOnly}
+        // theme={appTheme === 'dark' ? 'dark' : 'light'} // Theme integration temporarily removed
       />
     </div>
   );
 }
-
