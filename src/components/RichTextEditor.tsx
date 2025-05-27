@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useEditor, EditorContent, Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Button } from "@/components/ui/button";
@@ -24,6 +24,7 @@ import {
   Quote, // For blockquote
   Table as TableIcon, // For table
   Image as ImageIcon, // For image
+  Minus, // For Divider
 } from "lucide-react";
 import { AITextEnhancementDialog } from "./AITextEnhancementDialog";
 import { generateProjectSummary, type GenerateProjectSummaryOutput } from "@/ai/flows/generate-project-summary";
@@ -37,6 +38,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from './ui/textarea';
 
@@ -48,6 +55,9 @@ import TableRowExtension from '@tiptap/extension-table-row';
 import TableCellExtension from '@tiptap/extension-table-cell';
 import TableHeaderExtension from '@tiptap/extension-table-header';
 import Placeholder from '@tiptap/extension-placeholder';
+import HardBreak from '@tiptap/extension-hard-break';
+import HorizontalRule from '@tiptap/extension-horizontal-rule';
+
 
 // Lowlight and highlight.js for CodeBlockLowlight
 import { createLowlight } from 'lowlight';
@@ -92,6 +102,13 @@ interface RichTextEditorProps {
   value: string;
   onChange: (value: string) => void;
 }
+
+interface SlashCommand {
+  label: string;
+  icon: React.ElementType;
+  action: (editor: Editor) => void;
+}
+
 
 const TipTapToolbar = ({
   editor,
@@ -196,6 +213,14 @@ const TipTapToolbar = ({
       >
         <SquareCode className="h-4 w-4" />
       </Button>
+       <Button
+        onClick={() => editor.chain().focus().insertHorizontalRule().run()}
+        variant={'ghost'}
+        size="icon"
+        title="Insert Divider"
+      >
+        <Minus className="h-4 w-4" />
+      </Button>
       <Button
         onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
         variant={'ghost'}
@@ -255,27 +280,29 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   const { toast } = useToast();
   const [isAiLoading, setIsAiLoading] = useState(false);
 
-  // State for AI Enhance Dialog
   const [isEnhanceDialogOpen, setIsEnhanceDialogOpen] = useState(false);
   const [textForEnhancement, setTextForEnhancement] = useState("");
   const [originalSelectionRange, setOriginalSelectionRange] = useState<{from: number, to: number} | null>(null);
 
-
-  // State for Summary Dialog
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
   const [summaryContent, setSummaryContent] = useState("");
 
-  // State for Image URL Dialog
   const [isImageDialogOpen, setIsImageDialogOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
+
+  const [isSlashCommandMenuOpen, setIsSlashCommandMenuOpen] = useState(false);
+  const slashCommandMenuTriggerRef = useRef<HTMLSpanElement>(null);
+
 
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        codeBlock: false, // Disable default to use CodeBlockLowlight
+        codeBlock: false, 
+        hardBreak: false, // Use HardBreak extension for more control if needed
+        horizontalRule: false,
       }),
       Placeholder.configure({
-        placeholder: "Start writing your document, or type '/' for commands...",
+        placeholder: "Start writing your document, or type '/ ' for commands...",
       }),
       CodeBlockLowlight.configure({
         lowlight: lowlightInstance,
@@ -288,17 +315,38 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       TableRowExtension,
       TableCellExtension,
       TableHeaderExtension,
+      HardBreak, // Allows Shift+Enter for hard breaks
+      HorizontalRule, // For dividers
     ],
-    content: value?.trim() ? value : "<p></p>", // Ensure initial content is at least an empty paragraph
+    content: value?.trim() ? value : "<p></p>",
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
+      // Slash command trigger logic
+      const { selection } = editor.state;
+      if (selection.empty && selection.anchor > 1) {
+        const textBeforeCursor = editor.state.doc.textBetween(selection.anchor - 2, selection.anchor, "\n");
+        if (textBeforeCursor === "/ ") {
+          if (!isSlashCommandMenuOpen) { // Only open if not already open
+            // Timeout to allow DropdownMenu to register itself before attempting to open
+            setTimeout(() => setIsSlashCommandMenuOpen(true), 0);
+          }
+        } else {
+          if (isSlashCommandMenuOpen) {
+            setIsSlashCommandMenuOpen(false);
+          }
+        }
+      } else {
+        if (isSlashCommandMenuOpen) {
+          setIsSlashCommandMenuOpen(false);
+        }
+      }
     },
     editorProps: {
       attributes: {
         class: 'prose dark:prose-invert max-w-none p-4 focus:outline-none h-full',
       },
     },
-    autofocus: true, // Automatically focus the editor
+    autofocus: true,
   });
 
   useEffect(() => {
@@ -309,19 +357,14 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       if (currentHTML !== newContent) {
         const { from, to } = editor.state.selection;
         editor.commands.setContent(newContent, false);
-
-        // Try to restore selection only if the editor was already focused
-        // and newContent is not just an empty paragraph (which autofocus handles)
         if (editor.isFocused && newContent !== "<p></p>") {
            try {
               if (from <= editor.state.doc.content.size && to <= editor.state.doc.content.size) {
                 editor.commands.setTextSelection({ from, to });
               } else {
-                // Fallback if previous selection is out of bounds for new content
                 editor.commands.focus('end');
               }
            } catch (e) {
-              // Further fallback
               editor.commands.focus('end');
            }
         }
@@ -358,11 +401,6 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     if (originalSelectionRange) {
       editor.chain().focus().setTextSelection(originalSelectionRange).deleteSelection().insertContent(improvedText).run();
     } else {
-      // If there was no original selection, and we enhanced the whole document,
-      // we need to ensure the content is set in a way TipTap understands,
-      // especially if the AI returns Markdown-like text.
-      // For simplicity, we'll insert it. If the AI returns HTML, this is fine.
-      // If it returns Markdown, TipTap won't auto-convert it here without an extension.
       editor.commands.setContent(improvedText);
     }
     setIsEnhanceDialogOpen(false);
@@ -378,9 +416,6 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     }
     setIsAiLoading(true);
     try {
-      // The autoFormatText flow is expected to return Markdown-like text.
-      // TipTap's insertContent can handle some basic HTML, but not Markdown directly by default here.
-      // For now, we'll insert the formatted text. It might require a Markdown parser extension for full fidelity.
       const result: AutoFormatTextOutput = await autoFormatText({ textToFormat: text });
       if (selection) {
         editor.chain().focus().setTextSelection(selection).deleteSelection().insertContent(result.formattedText).run();
@@ -416,20 +451,65 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   };
 
   const handleOpenImageDialog = () => {
-    setImageUrl(""); // Reset image URL
+    setImageUrl("");
     setIsImageDialogOpen(true);
   };
 
-  const handleInsertImage = () => {
+  const handleInsertImageFromDialog = () => {
     if (editor && imageUrl.trim()) {
       editor.chain().focus().setImage({ src: imageUrl }).run();
     }
     setIsImageDialogOpen(false);
   };
 
+  const slashCommands: SlashCommand[] = editor ? [
+    { label: 'Heading 1', icon: Heading1, action: (e) => e.chain().focus().setNode('heading', { level: 1 }).run() },
+    { label: 'Heading 2', icon: Heading2, action: (e) => e.chain().focus().setNode('heading', { level: 2 }).run() },
+    { label: 'Heading 3', icon: Heading3, action: (e) => e.chain().focus().setNode('heading', { level: 3 }).run() },
+    { label: 'Bullet List', icon: List, action: (e) => e.chain().focus().toggleBulletList().run() },
+    { label: 'Numbered List', icon: ListOrdered, action: (e) => e.chain().focus().toggleOrderedList().run() },
+    { label: 'Blockquote', icon: Quote, action: (e) => e.chain().focus().toggleBlockquote().run() },
+    { label: 'Code Block', icon: SquareCode, action: (e) => e.chain().focus().toggleCodeBlock().run() },
+    { label: 'Divider', icon: Minus, action: (e) => e.chain().focus().setHorizontalRule().run() },
+    { label: 'Table', icon: TableIcon, action: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+    { label: 'Image', icon: ImageIcon, action: () => handleOpenImageDialog() },
+  ] : [];
+
+  const executeSlashCommand = (commandAction: (editor: Editor) => void) => {
+    if (!editor) return;
+    // Delete the "/ " trigger
+    const { from } = editor.state.selection;
+    editor.chain().focus().deleteRange({ from: from - 2, to: from }).run();
+    commandAction(editor);
+    setIsSlashCommandMenuOpen(false);
+  };
+
 
   return (
     <div className="flex flex-col h-full rounded-lg border bg-card text-card-foreground shadow-sm">
+      <DropdownMenu open={isSlashCommandMenuOpen} onOpenChange={setIsSlashCommandMenuOpen}>
+        <DropdownMenuTrigger ref={slashCommandMenuTriggerRef} asChild>
+          {/* This span is a hidden trigger, the menu is controlled programmatically */}
+          <span style={{ position: 'absolute', top: '-9999px', left: '-9999px' }} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          className="w-60"
+          onCloseAutoFocus={(e) => editor?.commands.focus()} // Return focus to editor
+        >
+          {slashCommands.map((command, index) => (
+            <DropdownMenuItem
+              key={index}
+              onSelect={() => executeSlashCommand(command.action)}
+              className="flex items-center gap-2"
+            >
+              <command.icon className="h-4 w-4" />
+              <span>{command.label}</span>
+            </DropdownMenuItem>
+          ))}
+          {slashCommands.length === 0 && <DropdownMenuItem disabled>No commands found</DropdownMenuItem>}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      
       <TipTapToolbar
         editor={editor}
         onAiEnhance={handleAiEnhance}
@@ -469,7 +549,6 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
         </DialogContent>
       </Dialog>
 
-      {/* Image URL Dialog */}
       <Dialog open={isImageDialogOpen} onOpenChange={setIsImageDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -489,10 +568,11 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsImageDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleInsertImage} disabled={!imageUrl.trim()}>Insert Image</Button>
+            <Button onClick={handleInsertImageFromDialog} disabled={!imageUrl.trim()}>Insert Image</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
   );
 }
+
