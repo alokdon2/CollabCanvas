@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState }s from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar"; // Import Navbar here for project-specific title
 import { RichTextEditor } from "@/components/RichTextEditor";
