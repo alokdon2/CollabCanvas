@@ -4,7 +4,7 @@
 import type { ExcalidrawImperativeAPI, ExcalidrawProps } from "@excalidraw/excalidraw/types/types";
 import type { ExcalidrawElement, AppState, BinaryFiles } from "@excalidraw/excalidraw/types/element/types";
 import type { WhiteboardData } from "@/lib/types";
-import { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react"; // Added React import
 import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
 import { useTheme } from "@/components/providers/ThemeProvider"; // For theme syncing
