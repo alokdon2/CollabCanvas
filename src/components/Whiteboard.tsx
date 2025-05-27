@@ -5,16 +5,10 @@ import type { ExcalidrawImperativeAPI, ExcalidrawProps } from "@excalidraw/excal
 import type { ExcalidrawElement, AppState } from "@excalidraw/excalidraw/types/element/types";
 import type { BinaryFiles } from "@excalidraw/excalidraw/types/types";
 
-import React, { useRef, useEffect, useState } from "react"; // Added useState
+import React, { useRef, useEffect, useState } from "react";
 import dynamic from 'next/dynamic';
 import { useTheme } from "@/components/providers/ThemeProvider";
 import type { WhiteboardData } from "@/lib/types";
-
-interface WhiteboardComponentProps {
-  initialData?: WhiteboardData | null;
-  onChange?: (data: WhiteboardData) => void;
-  isReadOnly?: boolean;
-}
 
 // Debounce helper function
 function debounce<T extends (...args: any[]) => any>(func: T, delay: number): (...args: Parameters<T>) => void {
@@ -47,10 +41,10 @@ const DynamicExcalidraw = dynamic<ExcalidrawProps>(
 export function Whiteboard({ initialData, onChange, isReadOnly = false }: WhiteboardComponentProps) {
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const { theme } = useTheme();
-  const [isClient, setIsClient] = useState(false); // State to track client-side mount
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    setIsClient(true); // Set to true after component has mounted
+    setIsClient(true);
   }, []);
 
   const UIOptions = {
@@ -66,6 +60,9 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
   };
 
   const currentInitialData = initialData || { elements: [], appState: {}, files: {} };
+  const safeAppState = currentInitialData.appState || {}; // Ensure appState is an object
+  const safeFiles = currentInitialData.files || {}; // Ensure files is an object
+
 
   // Debounce onChange
   const debouncedOnChange = useRef(
@@ -89,23 +86,22 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
         <h3 className="text-lg font-semibold">Whiteboard</h3>
       </div>
       <div style={{ height: "calc(100% - 65px)" }} className="w-full excalidraw-wrapper">
-        {isClient ? ( // Only render DynamicExcalidraw if isClient is true
+        {isClient ? ( 
           <DynamicExcalidraw
             ref={excalidrawAPIRef}
             initialData={{
               elements: currentInitialData.elements,
-              appState: currentInitialData.appState,
-              files: currentInitialData.files,
+              appState: safeAppState,
+              files: safeFiles,
             }}
             onChange={debouncedOnChange}
             UIOptions={UIOptions}
             viewModeEnabled={isReadOnly}
             theme={theme}
             detectScroll={false}
-            gridModeEnabled={ (currentInitialData.appState as any)?.gridModeEnabled ?? false }
+            gridModeEnabled={ (safeAppState as any)?.gridModeEnabled ?? false }
           />
         ) : (
-          // Fallback UI before client mount (or use the same loading UI as dynamic import)
           <div className="flex flex-col h-full items-center justify-center rounded-lg border bg-card text-card-foreground shadow-sm p-4">
             <p className="text-muted-foreground">Initializing Whiteboard...</p>
           </div>
@@ -114,3 +110,4 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
     </div>
   );
 }
+
