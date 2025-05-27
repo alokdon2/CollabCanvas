@@ -47,7 +47,7 @@ import TableExtension from '@tiptap/extension-table';
 import TableRowExtension from '@tiptap/extension-table-row';
 import TableCellExtension from '@tiptap/extension-table-cell';
 import TableHeaderExtension from '@tiptap/extension-table-header';
-import Placeholder from '@tiptap/extension-placeholder'; // Import Placeholder
+import Placeholder from '@tiptap/extension-placeholder'; 
 
 // Lowlight and highlight.js for CodeBlockLowlight
 import { createLowlight } from 'lowlight'; 
@@ -274,7 +274,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       StarterKit.configure({
         codeBlock: false, // Disable default to use CodeBlockLowlight
       }),
-      Placeholder.configure({ // Add and configure Placeholder
+      Placeholder.configure({ 
         placeholder: "Start writing your document, or type '/' for commands...",
       }),
       CodeBlockLowlight.configure({
@@ -288,7 +288,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       TableCellExtension,
       TableHeaderExtension,
     ],
-    content: value, 
+    content: value?.trim() ? value : "<p></p>", // Ensure initial content is at least an empty paragraph for placeholder
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },
@@ -302,18 +302,27 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   useEffect(() => {
     if (editor) {
       const currentHTML = editor.getHTML();
-      if (currentHTML === value) {
-        return;
-      }
-      const { from, to } = editor.state.selection;
-      editor.commands.setContent(value, false); 
-      
-      if (editor.isFocused) {
-         try {
-            editor.commands.setTextSelection({ from, to });
-         } catch (e) {
-            editor.commands.focus('end');
-         }
+      // Determine the content to set: if value is empty or just whitespace, use <p></p>
+      // Otherwise, use the provided value.
+      const newContent = value?.trim() ? value : "<p></p>";
+
+      // Only update if the new content is different from the editor's current HTML
+      if (currentHTML !== newContent) {
+        const { from, to } = editor.state.selection;
+        editor.commands.setContent(newContent, false); 
+        
+        if (editor.isFocused) {
+           try {
+              // Attempt to restore selection only if it's valid for the new content length
+              if (from <= editor.state.doc.content.size && to <= editor.state.doc.content.size) {
+                editor.commands.setTextSelection({ from, to });
+              } else {
+                editor.commands.focus('end'); // Fallback to focus end
+              }
+           } catch (e) {
+              editor.commands.focus('end'); // Fallback focus
+           }
+        }
       }
     }
   }, [value, editor]);
@@ -477,4 +486,3 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     </div>
   );
 }
-

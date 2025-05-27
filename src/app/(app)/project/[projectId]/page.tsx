@@ -21,7 +21,6 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Navbar } from "@/components/Navbar"; // Keep Navbar for project page structure
 
 
 export default function ProjectPage() {
@@ -31,7 +30,7 @@ export default function ProjectPage() {
 
   const [projects, setProjects] = useLocalStorage<Project[]>("collabcanvas-projects", []);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
-  const [textContent, setTextContent] = useState("");
+  const [textContent, setTextContent] = useState("<p></p>"); // Default to empty paragraph
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingProjectName, setEditingProjectName] = useState("");
@@ -43,7 +42,9 @@ export default function ProjectPage() {
     const project = projects.find((p) => p.id === projectId);
     if (project) {
       setCurrentProject(project);
-      setTextContent(project.textContent);
+      // Ensure textContent is at least an empty paragraph for TipTap,
+      // especially if loaded content is "" or null/undefined.
+      setTextContent(project.textContent?.trim() ? project.textContent : "<p></p>");
       setEditingProjectName(project.name);
     } else if (mounted && projects.length > 0) {
       // router.replace("/"); // Project not found - decided to keep this commented
@@ -91,9 +92,6 @@ export default function ProjectPage() {
   };
 
   if (!mounted || !currentProject) {
-    // Navbar component is not used in the return for loading state, 
-    // but it is part of the overall page structure if we use AppLayout.
-    // For now, we'll use a simple loading message.
     return (
       <div className="flex min-h-screen flex-col">
          <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -169,7 +167,6 @@ export default function ProjectPage() {
         <RichTextEditor 
           value={textContent} 
           onChange={handleTextChange}
-          onEnhancedText={(enhancedText) => setTextContent(enhancedText)}
         />
       </main>
       {currentProject && (
