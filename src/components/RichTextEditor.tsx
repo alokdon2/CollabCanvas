@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useRef } from 'react';
@@ -44,6 +45,7 @@ import {
 } from "@/components/ui/popover";
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from './ui/textarea';
+import { cn } from '@/lib/utils';
 
 // TipTap Extensions
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
@@ -55,7 +57,6 @@ import TableHeaderExtension from '@tiptap/extension-table-header';
 import Placeholder from '@tiptap/extension-placeholder';
 import HardBreak from '@tiptap/extension-hard-break';
 import HorizontalRule from '@tiptap/extension-horizontal-rule';
-
 
 // Lowlight and highlight.js for CodeBlockLowlight
 import { createLowlight } from 'lowlight';
@@ -95,7 +96,6 @@ const grammars = {
 
 const lowlightInstance = createLowlight(grammars);
 
-
 interface RichTextEditorProps {
   value: string;
   onChange: (value: string) => void;
@@ -106,7 +106,6 @@ interface SlashCommand {
   icon: React.ElementType;
   action: (editor: Editor) => void;
 }
-
 
 const TipTapToolbar = ({
   editor,
@@ -236,7 +235,6 @@ const TipTapToolbar = ({
         <ImageIcon className="h-4 w-4" />
       </Button>
 
-
       {/* AI Buttons */}
       <div className="h-6 w-px bg-border mx-1"></div>
 
@@ -291,6 +289,10 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   const [isSlashCommandMenuOpen, setIsSlashCommandMenuOpen] = useState(false);
   const [slashCommandAnchorPos, setSlashCommandAnchorPos] = useState<{ top: number; left: number } | null>(null);
   const editorWrapperRef = useRef<HTMLDivElement>(null);
+  
+  const commandButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const menuContentRef = useRef<HTMLDivElement>(null);
+  const [focusedCommandIndex, setFocusedCommandIndex] = useState(0);
 
 
   const editor = useEditor({
@@ -337,15 +339,15 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
             setSlashCommandAnchorPos({ top: coords.bottom, left: coords.left });
           }
           
-          setIsSlashCommandMenuOpen(true);
           editor.chain().focus().deleteRange({ from: from - 2, to }).run();
+          setFocusedCommandIndex(0); // Reset focus to first item
+          setIsSlashCommandMenuOpen(true);
           return; 
         }
       }
-      // Close menu if text no longer matches or selection changes significantly
       if (isSlashCommandMenuOpen) {
-         const textBeforeCursor = editor.state.doc.textBetween(Math.max(0, from - 2), from, "\n"); // Ensure from-2 is not negative
-         if (textBeforeCursor.trim() !== "/" || !selection.empty) { // More robust check
+         const textBeforeCursor = editor.state.doc.textBetween(Math.max(0, from - 2), from, "\n");
+         if (textBeforeCursor.trim() !== "" || !selection.empty) { // If user types something else or moves cursor
             // setIsSlashCommandMenuOpen(false); // Popover's onOpenChange will handle this
          }
       }
@@ -357,6 +359,34 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     },
     autofocus: true,
   });
+
+  const slashCommands: SlashCommand[] = editor ? [
+    { label: 'Heading 1', icon: Heading1, action: (e) => e.chain().focus().setNode('heading', { level: 1 }).run() },
+    { label: 'Heading 2', icon: Heading2, action: (e) => e.chain().focus().setNode('heading', { level: 2 }).run() },
+    { label: 'Heading 3', icon: Heading3, action: (e) => e.chain().focus().setNode('heading', { level: 3 }).run() },
+    { label: 'Bullet List', icon: List, action: (e) => e.chain().focus().toggleBulletList().run() },
+    { label: 'Numbered List', icon: ListOrdered, action: (e) => e.chain().focus().toggleOrderedList().run() },
+    { label: 'Blockquote', icon: Quote, action: (e) => e.chain().focus().toggleBlockquote().run() },
+    { label: 'Code Block', icon: SquareCode, action: (e) => e.chain().focus().toggleCodeBlock().run() },
+    { label: 'Divider', icon: Minus, action: (e) => e.chain().focus().setHorizontalRule().run() },
+    { label: 'Table', icon: TableIcon, action: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
+    { label: 'Image', icon: ImageIcon, action: () => handleOpenImageDialog() },
+  ] : [];
+  
+  useEffect(() => {
+    // Ensure commandButtonRefs array is the correct size
+    commandButtonRefs.current = Array(slashCommands.length).fill(null);
+  }, [slashCommands.length]);
+
+  useEffect(() => {
+    if (isSlashCommandMenuOpen) {
+      menuContentRef.current?.focus(); // Focus the container first
+      if (commandButtonRefs.current[focusedCommandIndex]) {
+        commandButtonRefs.current[focusedCommandIndex]?.focus();
+      }
+    }
+  }, [isSlashCommandMenuOpen, focusedCommandIndex, slashCommands]); // Rerun if slashCommands changes (e.g. editor becomes available)
+
 
   useEffect(() => {
     if (editor) {
@@ -470,26 +500,40 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     }
     setIsImageDialogOpen(false);
   };
-
-  const slashCommands: SlashCommand[] = editor ? [
-    { label: 'Heading 1', icon: Heading1, action: (e) => e.chain().focus().setNode('heading', { level: 1 }).run() },
-    { label: 'Heading 2', icon: Heading2, action: (e) => e.chain().focus().setNode('heading', { level: 2 }).run() },
-    { label: 'Heading 3', icon: Heading3, action: (e) => e.chain().focus().setNode('heading', { level: 3 }).run() },
-    { label: 'Bullet List', icon: List, action: (e) => e.chain().focus().toggleBulletList().run() },
-    { label: 'Numbered List', icon: ListOrdered, action: (e) => e.chain().focus().toggleOrderedList().run() },
-    { label: 'Blockquote', icon: Quote, action: (e) => e.chain().focus().toggleBlockquote().run() },
-    { label: 'Code Block', icon: SquareCode, action: (e) => e.chain().focus().toggleCodeBlock().run() },
-    { label: 'Divider', icon: Minus, action: (e) => e.chain().focus().setHorizontalRule().run() },
-    { label: 'Table', icon: TableIcon, action: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
-    { label: 'Image', icon: ImageIcon, action: () => handleOpenImageDialog() },
-  ] : [];
-
+  
   const executeSlashCommand = (commandAction: (editor: Editor) => void) => {
     if (!editor) return;
     commandAction(editor);
-    // Popover's onOpenChange will handle closing
+    setIsSlashCommandMenuOpen(false); // Ensure menu closes
   };
 
+  const handleSlashCommandKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!isSlashCommandMenuOpen || slashCommands.length === 0) return;
+  
+    let newIndex = focusedCommandIndex;
+  
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      newIndex = (focusedCommandIndex + 1) % slashCommands.length;
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      newIndex = (focusedCommandIndex - 1 + slashCommands.length) % slashCommands.length;
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      if (commandButtonRefs.current[focusedCommandIndex]) {
+        commandButtonRefs.current[focusedCommandIndex]?.click();
+      }
+      return; 
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      setIsSlashCommandMenuOpen(false);
+      return;
+    }
+  
+    if (newIndex !== focusedCommandIndex) {
+      setFocusedCommandIndex(newIndex);
+    }
+  };
 
   return (
     <div ref={editorWrapperRef} className="relative flex flex-col h-full rounded-lg border bg-card text-card-foreground shadow-sm">
@@ -504,25 +548,36 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
           }}
         />
         <PopoverContent
-          className="w-60 p-1" // Adjusted className for PopoverContent
+          className="w-60 p-0" // No padding on content, padding on inner div
           sideOffset={5}
           align="start"
           onCloseAutoFocus={() => editor?.chain().focus().run()}
-          // onOpenAutoFocus={(e) => e.preventDefault()} // Removed to allow PopoverContent/items to take focus
         >
-          {slashCommands.map((command, index) => (
-            <button
-              key={index}
-              onClick={() => executeSlashCommand(command.action)}
-              className="flex items-center gap-2 w-full p-2 text-sm rounded-sm hover:bg-accent focus:bg-accent focus:outline-none"
-            >
-              <command.icon className="h-4 w-4" />
-              <span>{command.label}</span>
-            </button>
-          ))}
-          {slashCommands.length === 0 && (
-            <div className="p-2 text-sm text-muted-foreground">No commands found</div>
-          )}
+          <div
+            ref={menuContentRef}
+            tabIndex={-1}
+            onKeyDown={handleSlashCommandKeyDown}
+            className="p-1 focus:outline-none"
+          >
+            {slashCommands.map((command, index) => (
+              <button
+                key={command.label} // Use a unique key like label
+                ref={(el) => (commandButtonRefs.current[index] = el)}
+                onClick={() => executeSlashCommand(command.action)}
+                className={cn(
+                  "flex items-center gap-2 w-full p-2 text-sm rounded-sm focus:outline-none",
+                  index === focusedCommandIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/80"
+                )}
+                tabIndex={-1} // Individual buttons not in tab order
+              >
+                <command.icon className="h-4 w-4" />
+                <span>{command.label}</span>
+              </button>
+            ))}
+            {slashCommands.length === 0 && (
+              <div className="p-2 text-sm text-muted-foreground">No commands available</div>
+            )}
+          </div>
         </PopoverContent>
       </Popover>
       
@@ -591,3 +646,4 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     </div>
   );
 }
+
