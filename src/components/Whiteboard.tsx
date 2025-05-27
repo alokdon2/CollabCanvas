@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { ExcalidrawImperativeAPI, ExcalidrawProps } from "@excalidraw/excalidraw/types/types";
+import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types/types";
 import type { ExcalidrawElement, AppState, BinaryFiles } from "@excalidraw/excalidraw/types/element/types";
 import type { WhiteboardData } from "@/lib/types";
 import React, { useEffect, useState, useRef, useCallback } from "react"; // Added React import
@@ -74,9 +74,9 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
   );
   
   // Create a stable key based on element IDs and versions to help React manage re-renders
-  const excalidrawKey = initialData?.elements 
-    ? initialData.elements.map(el => `${el.id}_${el.version}`).join('-') 
-    : 'empty-whiteboard';
+  // const excalidrawKey = initialData?.elements 
+  //   ? initialData.elements.map(el => `${el.id}_${el.version}`).join('-') 
+  //   : 'empty-whiteboard';
 
   // Memoize initial data to prevent unnecessary re-initializations of Excalidraw
   const currentInitialData = React.useMemo(() => {
@@ -100,7 +100,7 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
   return (
     <div className="h-full w-full rounded-lg border bg-card text-card-foreground shadow-sm excalidraw-wrapper">
       <DynamicallyLoadedExcalidraw
-        key={excalidrawKey} 
+        // key={excalidrawKey} // Removed key to prevent unnecessary re-mounts
         excalidrawAPI={(api) => (excalidrawAPIRef.current = api)}
         initialData={currentInitialData}
         onChange={debouncedOnChange}
