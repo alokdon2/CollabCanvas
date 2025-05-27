@@ -15,9 +15,9 @@ import {
   Heading3,
   List,
   ListOrdered,
-  Sparkles, 
-  Pilcrow,  
-  AlignLeft, 
+  Sparkles,
+  Pilcrow,
+  AlignLeft,
   Loader2,
   Code, // For inline code
   SquareCode, // For code block
@@ -38,7 +38,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Textarea } from './ui/textarea'; 
+import { Textarea } from './ui/textarea';
 
 // TipTap Extensions
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
@@ -47,10 +47,10 @@ import TableExtension from '@tiptap/extension-table';
 import TableRowExtension from '@tiptap/extension-table-row';
 import TableCellExtension from '@tiptap/extension-table-cell';
 import TableHeaderExtension from '@tiptap/extension-table-header';
-import Placeholder from '@tiptap/extension-placeholder'; 
+import Placeholder from '@tiptap/extension-placeholder';
 
 // Lowlight and highlight.js for CodeBlockLowlight
-import { createLowlight } from 'lowlight'; 
+import { createLowlight } from 'lowlight';
 import javascript from 'highlight.js/lib/languages/javascript';
 import css from 'highlight.js/lib/languages/css';
 import html from 'highlight.js/lib/languages/xml'; // xml for html
@@ -89,18 +89,18 @@ const lowlightInstance = createLowlight(grammars);
 
 
 interface RichTextEditorProps {
-  value: string; 
-  onChange: (value: string) => void; 
+  value: string;
+  onChange: (value: string) => void;
 }
 
-const TipTapToolbar = ({ 
+const TipTapToolbar = ({
   editor,
   onAiEnhance,
   onAutoFormat,
   onSummarize,
   onInsertImage,
   isAiLoading,
-}: { 
+}: {
   editor: Editor | null;
   onAiEnhance: () => void;
   onAutoFormat: () => void;
@@ -268,17 +268,18 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   // State for Image URL Dialog
   const [isImageDialogOpen, setIsImageDialogOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
-  
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
         codeBlock: false, // Disable default to use CodeBlockLowlight
       }),
-      Placeholder.configure({ 
+      Placeholder.configure({
         placeholder: "Start writing your document, or type '/' for commands...",
       }),
       CodeBlockLowlight.configure({
         lowlight: lowlightInstance,
+        defaultLanguage: 'plaintext',
       }),
       ImageExtension,
       TableExtension.configure({
@@ -288,39 +289,40 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       TableCellExtension,
       TableHeaderExtension,
     ],
-    content: value?.trim() ? value : "<p></p>", // Ensure initial content is at least an empty paragraph for placeholder
+    content: value?.trim() ? value : "<p></p>", // Ensure initial content is at least an empty paragraph
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },
     editorProps: {
       attributes: {
-        class: 'prose dark:prose-invert max-w-none p-4 focus:outline-none h-full', 
+        class: 'prose dark:prose-invert max-w-none p-4 focus:outline-none h-full',
       },
     },
+    autofocus: true, // Automatically focus the editor
   });
 
   useEffect(() => {
     if (editor) {
       const currentHTML = editor.getHTML();
-      // Determine the content to set: if value is empty or just whitespace, use <p></p>
-      // Otherwise, use the provided value.
       const newContent = value?.trim() ? value : "<p></p>";
 
-      // Only update if the new content is different from the editor's current HTML
       if (currentHTML !== newContent) {
         const { from, to } = editor.state.selection;
-        editor.commands.setContent(newContent, false); 
-        
-        if (editor.isFocused) {
+        editor.commands.setContent(newContent, false);
+
+        // Try to restore selection only if the editor was already focused
+        // and newContent is not just an empty paragraph (which autofocus handles)
+        if (editor.isFocused && newContent !== "<p></p>") {
            try {
-              // Attempt to restore selection only if it's valid for the new content length
               if (from <= editor.state.doc.content.size && to <= editor.state.doc.content.size) {
                 editor.commands.setTextSelection({ from, to });
               } else {
-                editor.commands.focus('end'); // Fallback to focus end
+                // Fallback if previous selection is out of bounds for new content
+                editor.commands.focus('end');
               }
            } catch (e) {
-              editor.commands.focus('end'); // Fallback focus
+              // Further fallback
+              editor.commands.focus('end');
            }
         }
       }
@@ -331,7 +333,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     if (!editor) return { text: "", selection: null };
     const { selection } = editor.state;
     if (!selection.empty) {
-      return { 
+      return {
         text: editor.state.doc.textBetween(selection.from, selection.to, ' '),
         selection: { from: selection.from, to: selection.to }
       };
@@ -356,12 +358,17 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     if (originalSelectionRange) {
       editor.chain().focus().setTextSelection(originalSelectionRange).deleteSelection().insertContent(improvedText).run();
     } else {
+      // If there was no original selection, and we enhanced the whole document,
+      // we need to ensure the content is set in a way TipTap understands,
+      // especially if the AI returns Markdown-like text.
+      // For simplicity, we'll insert it. If the AI returns HTML, this is fine.
+      // If it returns Markdown, TipTap won't auto-convert it here without an extension.
       editor.commands.setContent(improvedText);
     }
     setIsEnhanceDialogOpen(false);
     toast({ title: "Text Enhanced", description: "AI suggestion applied."});
   };
-  
+
   const handleAutoFormat = async () => {
     if (!editor) return;
     const { text, selection } = getTextForAI();
@@ -371,6 +378,9 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     }
     setIsAiLoading(true);
     try {
+      // The autoFormatText flow is expected to return Markdown-like text.
+      // TipTap's insertContent can handle some basic HTML, but not Markdown directly by default here.
+      // For now, we'll insert the formatted text. It might require a Markdown parser extension for full fidelity.
       const result: AutoFormatTextOutput = await autoFormatText({ textToFormat: text });
       if (selection) {
         editor.chain().focus().setTextSelection(selection).deleteSelection().insertContent(result.formattedText).run();
@@ -393,7 +403,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     }
     setIsAiLoading(true);
     try {
-      const docText = editor.getText(); 
+      const docText = editor.getText();
       const result: GenerateProjectSummaryOutput = await generateProjectSummary({ textDocumentContent: docText });
       setSummaryContent(result.summary);
       setIsSummaryDialogOpen(true);
@@ -411,7 +421,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   };
 
   const handleInsertImage = () => {
-    if (editor && imageUrl) {
+    if (editor && imageUrl.trim()) {
       editor.chain().focus().setImage({ src: imageUrl }).run();
     }
     setIsImageDialogOpen(false);
@@ -420,8 +430,8 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
 
   return (
     <div className="flex flex-col h-full rounded-lg border bg-card text-card-foreground shadow-sm">
-      <TipTapToolbar 
-        editor={editor} 
+      <TipTapToolbar
+        editor={editor}
         onAiEnhance={handleAiEnhance}
         onAutoFormat={handleAutoFormat}
         onSummarize={handleSummarize}
