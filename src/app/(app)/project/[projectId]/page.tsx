@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState } from "react"; // Fixed: removed 's'
 import { useParams, useRouter } from "next/navigation";
 import { Navbar } from "@/components/Navbar"; // Import Navbar here for project-specific title
 import { RichTextEditor } from "@/components/RichTextEditor";
@@ -191,3 +192,5 @@ export default function ProjectPage() {
     </div>
   );
 }
+
+    
