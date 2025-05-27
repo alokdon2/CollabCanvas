@@ -1,12 +1,18 @@
 
 "use client";
 
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types/types";
 import type { ExcalidrawElement, AppState, BinaryFiles } from "@excalidraw/excalidraw/types/element/types";
 import type { WhiteboardData } from "@/lib/types";
-import React, { useEffect, useState, useRef, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
+
+interface WhiteboardProps {
+  initialData?: WhiteboardData | null; // Allow null for initialData
+  onChange?: (data: WhiteboardData) => void;
+  isReadOnly?: boolean;
+}
 
 // Dynamically import Excalidraw component
 const DynamicallyLoadedExcalidraw = dynamic(
@@ -30,12 +36,6 @@ const DynamicallyLoadedExcalidraw = dynamic(
 );
 
 
-interface WhiteboardProps {
-  initialData?: WhiteboardData | null; // Allow null for initialData
-  onChange?: (data: WhiteboardData) => void;
-  isReadOnly?: boolean;
-}
-
 export function Whiteboard({ initialData, onChange, isReadOnly = false }: WhiteboardProps) {
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const [isClient, setIsClient] = useState(false);
@@ -56,7 +56,9 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
   );
 
   if (!isClient) {
-     return (
+    // This will show the loading indicator from the dynamic import if it hasn't already finished.
+    // It ensures we don't even try to render DynamicallyLoadedExcalidraw until mounted.
+    return (
       <div className="flex h-full w-full items-center justify-center rounded-lg border bg-card">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
         <p className="ml-2 text-muted-foreground">Initializing Whiteboard...</p>
@@ -75,3 +77,4 @@ export function Whiteboard({ initialData, onChange, isReadOnly = false }: Whiteb
     </div>
   );
 }
+
