@@ -186,16 +186,6 @@
     --tw-prose-tbody: hsl(var(--foreground));
   }
 
-  /* TipTap Placeholder styles */
-  .ProseMirror p.is-editor-empty:first-child::before {
-    content: attr(data-placeholder);
-    float: left;
-    color: hsl(var(--muted-foreground)); /* Use theme's muted-foreground color */
-    pointer-events: none;
-    height: 0;
-    @apply opacity-50; /* Make it a bit more subtle */
-  }
-
   /* TipTap Table specific styles */
   .ProseMirror table {
     border-collapse: collapse;
@@ -255,5 +245,17 @@
   }
   .prose pre {
       @apply rounded-md; /* Ensure pre tag also has rounded corners */
+  }
+}
+
+/* TipTap Placeholder styles - Moved to @layer utilities for higher precedence */
+@layer utilities {
+  .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    float: left;
+    color: hsl(var(--muted-foreground)); /* Use theme's muted-foreground color */
+    pointer-events: none;
+    height: 0;
+    opacity: 0.5; /* Directly set opacity */
   }
 }
