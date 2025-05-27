@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview A project summary AI agent.
@@ -14,9 +15,7 @@ const GenerateProjectSummaryInputSchema = z.object({
   textDocumentContent: z
     .string()
     .describe('The content of the text document in the project.'),
-  whiteboardContent: z
-    .string()
-    .describe('The content of the whiteboard in the project.'),
+  // whiteboardContent removed
 });
 export type GenerateProjectSummaryInput = z.infer<typeof GenerateProjectSummaryInputSchema>;
 
@@ -33,12 +32,11 @@ const prompt = ai.definePrompt({
   name: 'generateProjectSummaryPrompt',
   input: {schema: GenerateProjectSummaryInputSchema},
   output: {schema: GenerateProjectSummaryOutputSchema},
-  prompt: `You are an AI assistant that generates summaries for projects containing a text document and a whiteboard.
+  prompt: `You are an AI assistant that generates summaries for projects containing a text document.
 
-  Given the content of the text document and the whiteboard, create a concise summary of the project.
+  Given the content of the text document, create a concise summary of the project.
 
   Text Document Content: {{{textDocumentContent}}}
-  Whiteboard Content: {{{whiteboardContent}}}
   `,
 });
 

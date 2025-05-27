@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -35,7 +36,7 @@ export function CreateProjectDialog({ onCreateProject }: CreateProjectDialogProp
       id: crypto.randomUUID(),
       name: projectName.trim(),
       textContent: "",
-      whiteboardContent: { elements: [], appState: {}, files: {} },
+      // whiteboardContent removed
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };

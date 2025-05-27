@@ -1,14 +1,11 @@
 
 "use client";
 
-import { useEffect, useState } from "react"; // Fixed: removed 's'
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Navbar } from "@/components/Navbar"; // Import Navbar here for project-specific title
 import { RichTextEditor } from "@/components/RichTextEditor";
-import { Whiteboard } from "@/components/Whiteboard";
-import { ResizablePanels } from "@/components/ResizablePanels";
 import useLocalStorage from "@/hooks/use-local-storage";
-import type { Project, WhiteboardData } from "@/lib/types";
+import type { Project } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Share2, Trash2, Edit, Check } from "lucide-react";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
@@ -24,6 +21,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Navbar } from "@/components/Navbar"; // Keep Navbar for project page structure
 
 
 export default function ProjectPage() {
@@ -34,7 +32,6 @@ export default function ProjectPage() {
   const [projects, setProjects] = useLocalStorage<Project[]>("collabcanvas-projects", []);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [textContent, setTextContent] = useState("");
-  const [whiteboardContent, setWhiteboardContent] = useState<WhiteboardData | null>(null);
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingProjectName, setEditingProjectName] = useState("");
@@ -47,10 +44,9 @@ export default function ProjectPage() {
     if (project) {
       setCurrentProject(project);
       setTextContent(project.textContent);
-      setWhiteboardContent(project.whiteboardContent);
       setEditingProjectName(project.name);
-    } else if (mounted && projects.length > 0) { // Only redirect if projects have loaded and project not found
-      // router.replace("/"); // Project not found
+    } else if (mounted && projects.length > 0) {
+      // router.replace("/"); // Project not found - decided to keep this commented
     }
   }, [projectId, projects, router, mounted]);
 
@@ -62,22 +58,18 @@ export default function ProjectPage() {
       setProjects((prevProjects) =>
         prevProjects.map((p) =>
           p.id === projectId
-            ? { ...p, textContent, whiteboardContent, name: currentProject.name, updatedAt: new Date().toISOString() }
+            ? { ...p, textContent, name: currentProject.name, updatedAt: new Date().toISOString() }
             : p
         )
       );
     }, 1000); // Save 1 second after last change
 
     return () => clearTimeout(handler);
-  }, [textContent, whiteboardContent, currentProject, projectId, setProjects, mounted]);
+  }, [textContent, currentProject, projectId, setProjects, mounted]);
 
 
   const handleTextChange = (newText: string) => {
     setTextContent(newText);
-  };
-
-  const handleWhiteboardChange = (newData: WhiteboardData) => {
-    setWhiteboardContent(newData);
   };
   
   const handleNameEditToggle = () => {
@@ -99,9 +91,19 @@ export default function ProjectPage() {
   };
 
   if (!mounted || !currentProject) {
+    // Navbar component is not used in the return for loading state, 
+    // but it is part of the overall page structure if we use AppLayout.
+    // For now, we'll use a simple loading message.
     return (
       <div className="flex min-h-screen flex-col">
-        <Navbar /> {/* Show navbar even while loading */}
+         <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+            <div className="container flex h-16 items-center px-4 sm:px-6 lg:px-8">
+                <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2">
+                    <ArrowLeft className="h-5 w-5" />
+                </Button>
+                <h1 className="text-lg font-semibold">Loading...</h1>
+            </div>
+        </header>
         <div className="flex flex-1 items-center justify-center">
           <p>Loading project...</p>
         </div>
@@ -160,26 +162,14 @@ export default function ProjectPage() {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
-             {/* UserProfileDropdown can be added back if needed, but Navbar is not used directly for page title here */}
           </div>
         </div>
       </header>
-      <main className="flex-1 overflow-hidden">
-        <ResizablePanels
-          leftPanel={
-            <RichTextEditor 
-              value={textContent} 
-              onChange={handleTextChange}
-              onEnhancedText={(enhancedText) => setTextContent(enhancedText)}
-            />
-          }
-          rightPanel={
-            <Whiteboard 
-              initialData={whiteboardContent} 
-              onChange={handleWhiteboardChange} 
-            />
-          }
-          className="h-full" // Ensure ResizablePanels takes full height of its container
+      <main className="flex-1 overflow-hidden h-full"> {/* Ensure main takes remaining height */}
+        <RichTextEditor 
+          value={textContent} 
+          onChange={handleTextChange}
+          onEnhancedText={(enhancedText) => setTextContent(enhancedText)}
         />
       </main>
       {currentProject && (
@@ -192,5 +182,3 @@ export default function ProjectPage() {
     </div>
   );
 }
-
-    

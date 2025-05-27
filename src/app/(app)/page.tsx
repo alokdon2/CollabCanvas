@@ -8,27 +8,14 @@ import useLocalStorage from "@/hooks/use-local-storage";
 import type { Project } from "@/lib/types";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutDashboard } from "lucide-react"; // Added LayoutDashboard
+import { Search, LayoutDashboard } from "lucide-react"; 
 
 const initialProjects: Project[] = [
   {
     id: "1",
     name: "My First Project",
     textContent: "This is the content of my first project's document.",
-    whiteboardContent: {
-      elements: [
-        { 
-          type: "rectangle", x: 10, y: 10, width: 100, height: 50, id: "rect1", 
-          strokeColor: "#000000", backgroundColor: "transparent", fillStyle: "hachure", 
-          strokeWidth: 1, strokeStyle: "solid", roughness: 1, opacity: 100, 
-          groupIds: [], roundness: { type: 2 }, seed: 12345, version: 1, versionNonce: 123, 
-          isDeleted: false, boundElementIds: null, // Corrected typo from 'มุมboundElementIds'
-          updated: 1678886400000 // Static timestamp instead of Date.now()
-        } as any 
-      ],
-      appState: { viewBackgroundColor: "#ffffff" },
-      files: {}
-    },
+    // whiteboardContent removed
     createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date().toISOString(),
   },
@@ -111,7 +98,7 @@ export default function DashboardPage() {
           <h3 className="mt-2 text-xl font-semibold">No projects found</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {searchTerm ? "Try a different search term or " : "Get started by "}
-             creating a new project. {/* Simplified the "Create Project" part here */}
+             creating a new project.
           </p>
            {!searchTerm && <CreateProjectDialog onCreateProject={handleCreateProject} />}
         </div>
@@ -126,4 +113,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

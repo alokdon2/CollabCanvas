@@ -1,6 +1,7 @@
+
 import Link from "next/link";
 import { format } from "date-fns";
-import { Edit3, FileText, LayoutDashboard, Trash2, Share2 } from "lucide-react";
+import { Edit3, FileText, Trash2, Share2 } from "lucide-react"; // Removed LayoutDashboard
 import {
   Card,
   CardContent,
@@ -43,10 +44,12 @@ export function ProjectCard({ project, onDeleteProject, onShareProject }: Projec
           <FileText className="h-4 w-4" /> 
           <span>{project.textContent ? `${project.textContent.substring(0,30)}...` : "Empty document"}</span>
         </div>
+        {/* Removed whiteboard content display
         <div className="flex items-center space-x-2 text-sm text-muted-foreground">
           <LayoutDashboard className="h-4 w-4" />
           <span>{project.whiteboardContent && project.whiteboardContent.elements.length > 0 ? `${project.whiteboardContent.elements.length} whiteboard items` : "Empty whiteboard"}</span>
-        </div>
+        </div> 
+        */}
       </CardContent>
       <CardFooter className="flex justify-between">
         <Button asChild variant="default" size="sm">
