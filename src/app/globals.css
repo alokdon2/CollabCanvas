@@ -93,13 +93,13 @@
   }
 
   .dark {
-    --background: 220 12% 12%; /* Dark Blue Gray - SLIGHTLY ADJUSTED */
-    --foreground: 0 0% 92%; /* Light Gray - SLIGHTLY ADJUSTED */
+    --background: 0 0% 8.2%; /* #151515 - Excalidraw dark background */
+    --foreground: 0 0% 92%; /* Light Gray */
 
-    --card: 220 15% 15%;
+    --card: 0 0% 12.2%; /* #1f1f1f - Slightly lighter than background */
     --card-foreground: 0 0% 95%;
 
-    --popover: 220 15% 15%;
+    --popover: 0 0% 12.2%; /* #1f1f1f - Same as card */
     --popover-foreground: 0 0% 95%;
 
     --primary: 180 100% 35%; /* Lighter Deep Teal for dark mode */
@@ -108,7 +108,7 @@
     --secondary: 180 50% 25%; /* Darker Teal variant */
     --secondary-foreground: 0 0% 95%;
 
-    --muted: 220 15% 20%;
+    --muted: 0 0% 14.9%; /* #262626 - A bit lighter than card */
     --muted-foreground: 0 0% 65%; /* Adjusted for better visibility in dark mode placeholder */
 
     --accent: 17 100% 65%; /* Adjusted Soft Orange */
@@ -117,8 +117,8 @@
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
 
-    --border: 220 15% 25%;
-    --input: 220 15% 25%;
+    --border: 0 0% 20%; /* #333333 */
+    --input: 0 0% 20%; /* #333333 */
     --ring: 180 100% 35%; /* Primary for ring in dark mode */
 
     --chart-1: 220 70% 50%;
