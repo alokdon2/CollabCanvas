@@ -93,6 +93,7 @@ export function Whiteboard({
         initialData={freshInitialData} // Always pass a fresh, blank object
         onChange={debouncedOnChange} // This will not propagate changes to the parent
         viewModeEnabled={isReadOnly}
+        uiOptions={{ canvasActions: { toggleMenu: false } }} // Hide the hamburger menu
         // theme={appTheme === 'dark' ? 'dark' : 'light'} // Theme integration temporarily removed
       />
     </div>
