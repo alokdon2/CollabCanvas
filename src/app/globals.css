@@ -273,26 +273,23 @@
     opacity: 0.6; /* Adjusted opacity */
   }
 
-  /* Styles to hide specific Excalidraw menu items (e.g., GitHub, Discord, Twitter links). */
-  /* These selectors target <a> tags with specific href attributes within common Excalidraw menu dialogs. */
-  /* The .excalidraw-wrapper class is assumed to be on a parent container of the Excalidraw component. */
-  /* The .excalidraw class is the root class of the Excalidraw component itself. */
-  /* .App-menu__dialog is a common class for the main menu container in Excalidraw. */
-
-  .excalidraw-wrapper .excalidraw .App-menu__dialog a[href="https://excalidraw.com"],
-  .excalidraw-wrapper .excalidraw .App-menu__dialog a[href*="github.com/excalidraw"],
-  .excalidraw-wrapper .excalidraw .App-menu__dialog a[href*="discord.gg/excalidraw"],
-  .excalidraw-wrapper .excalidraw .App-menu__dialog a[href*="twitter.com/excalidraw"],
-  .excalidraw-wrapper .excalidraw .App-menu__dialog a[href*="plus.excalidraw.com"] {
+  /* Styles to hide specific Excalidraw menu items. */
+  /* These selectors target <a> tags with specific href attributes within a .dropdown-menu-group */
+  /* which is itself within common Excalidraw menu dialogs. */
+  .excalidraw-wrapper .excalidraw .App-menu__dialog .dropdown-menu-group a[href="https://excalidraw.com"],
+  .excalidraw-wrapper .excalidraw .App-menu__dialog .dropdown-menu-group a[href*="github.com/excalidraw"],
+  .excalidraw-wrapper .excalidraw .App-menu__dialog .dropdown-menu-group a[href*="discord.gg/excalidraw"],
+  .excalidraw-wrapper .excalidraw .App-menu__dialog .dropdown-menu-group a[href*="twitter.com/excalidraw"],
+  .excalidraw-wrapper .excalidraw .App-menu__dialog .dropdown-menu-group a[href*="plus.excalidraw.com"] {
     display: none !important;
   }
 
   /* Fallback for potentially deeper structures involving .Island and .Dialog__body */
-  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body a[href="https://excalidraw.com"],
-  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body a[href*="github.com/excalidraw"],
-  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body a[href*="discord.gg/excalidraw"],
-  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body a[href*="twitter.com/excalidraw"],
-  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body a[href*="plus.excalidraw.com"] {
+  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body .dropdown-menu-group a[href="https://excalidraw.com"],
+  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body .dropdown-menu-group a[href*="github.com/excalidraw"],
+  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body .dropdown-menu-group a[href*="discord.gg/excalidraw"],
+  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body .dropdown-menu-group a[href*="twitter.com/excalidraw"],
+  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body .dropdown-menu-group a[href*="plus.excalidraw.com"] {
     display: none !important;
   }
 }
