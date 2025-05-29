@@ -136,7 +136,7 @@ const TipTapToolbar = ({
 
   return (
     <div className="p-2 m-2 rounded-lg shadow-xl bg-background/90 backdrop-blur-sm flex items-center gap-1 flex-wrap sticky top-2 z-10">
-      {/* Formatting & Alignment Group */}
+      {/* Formatting Group */}
       <div className="flex items-center gap-1 flex-wrap">
         <Button
           onClick={() => editor.chain().focus().toggleBold().run()}
@@ -194,7 +194,12 @@ const TipTapToolbar = ({
         >
           <ListOrdered className="h-4 w-4" />
         </Button>
-         <Separator orientation="vertical" className="h-6 mx-1 bg-border" />
+      </div>
+      
+      <Separator orientation="vertical" className="h-6 mx-1 bg-border" />
+      
+      {/* Alignment Group */}
+      <div className="flex items-center gap-1 flex-wrap">
         <Button
           onClick={() => editor.chain().focus().setTextAlign('left').run()}
           variant={editor.isActive({ textAlign: 'left' }) ? 'secondary' : 'ghost'}
@@ -577,6 +582,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       event.preventDefault();
       if (commandButtonRefs.current[focusedCommandIndex]) {
         commandButtonRefs.current[focusedCommandIndex]?.click();
+        setIsSlashCommandMenuOpen(false); // Close menu on enter
       }
       return; 
     } else if (event.key === "Escape") {
@@ -603,7 +609,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
 
   return (
     <div ref={editorWrapperRef} className={cn(
-        "relative flex flex-col h-full rounded-lg border bg-card text-card-foreground shadow-sm"
+        "relative flex flex-col items-center h-full rounded-lg border bg-card text-card-foreground shadow-sm"
     )}>
       <Popover open={isSlashCommandMenuOpen} onOpenChange={setIsSlashCommandMenuOpen}>
         <PopoverAnchor
@@ -658,7 +664,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
         isAiLoading={isAiLoading}
         activeAiTool={activeAiTool}
       />
-      <EditorContent editor={editor} className="flex-grow h-full overflow-y-auto" />
+      <EditorContent editor={editor} className="flex-grow h-full overflow-y-auto w-full" />
 
       <AITextEnhancementDialog
         isOpen={isEnhanceDialogOpen}
@@ -724,3 +730,4 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     </div>
   );
 }
+
