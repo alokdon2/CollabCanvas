@@ -17,7 +17,6 @@ import {
   ListOrdered,
   Sparkles,
   Pilcrow,
-  AlignLeft,
   Loader2,
   Code, // For inline code
   SquareCode, // For code block
@@ -25,6 +24,11 @@ import {
   Table as TableIcon, // For table
   Image as ImageIcon, // For image
   Minus, // For Divider
+  AlignLeft, // For text-align left
+  AlignCenter, // For text-align center
+  AlignRight, // For text-align right
+  AlignJustify, // For text-align justify
+  ListCollapse, // New icon for Summarize Document
 } from "lucide-react";
 import { AITextEnhancementDialog } from "./AITextEnhancementDialog";
 import { generateProjectSummary, type GenerateProjectSummaryOutput } from "@/ai/flows/generate-project-summary";
@@ -46,6 +50,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from './ui/textarea';
 import { cn } from '@/lib/utils';
+import { Separator } from "@/components/ui/separator";
 
 // TipTap Extensions
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
@@ -57,6 +62,7 @@ import TableHeaderExtension from '@tiptap/extension-table-header';
 import Placeholder from '@tiptap/extension-placeholder';
 import HardBreak from '@tiptap/extension-hard-break';
 import HorizontalRule from '@tiptap/extension-horizontal-rule';
+import TextAlign from '@tiptap/extension-text-align';
 
 // Lowlight and highlight.js for CodeBlockLowlight
 import { createLowlight } from 'lowlight';
@@ -114,6 +120,7 @@ const TipTapToolbar = ({
   onSummarize,
   onInsertImage,
   isAiLoading,
+  activeAiTool,
 }: {
   editor: Editor | null;
   onAiEnhance: () => void;
@@ -121,153 +128,193 @@ const TipTapToolbar = ({
   onSummarize: () => void;
   onInsertImage: () => void;
   isAiLoading: boolean;
+  activeAiTool: string | null;
 }) => {
   if (!editor) {
     return null;
   }
 
   return (
-    <div className="p-2 border-b flex items-center gap-1 flex-wrap">
-      <Button
-        onClick={() => editor.chain().focus().toggleBold().run()}
-        variant={editor.isActive('bold') ? 'secondary' : 'ghost'}
-        size="icon"
-        title="Bold"
-      >
-        <Bold className="h-4 w-4" />
-      </Button>
-      <Button
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-        variant={editor.isActive('italic') ? 'secondary' : 'ghost'}
-        size="icon"
-        title="Italic"
-      >
-        <Italic className="h-4 w-4" />
-      </Button>
-      <Button
-        onClick={() => editor.chain().focus().toggleCode().run()}
-        variant={editor.isActive('code') ? 'secondary' : 'ghost'}
-        size="icon"
-        title="Inline Code"
-      >
-        <Code className="h-4 w-4" />
-      </Button>
-      <div className="h-6 w-px bg-border mx-1"></div>
-      <Button
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        variant={editor.isActive('heading', { level: 1 }) ? 'secondary' : 'ghost'}
-        size="icon"
-        title="Heading 1"
-      >
-        <Heading1 className="h-4 w-4" />
-      </Button>
-      <Button
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        variant={editor.isActive('heading', { level: 2 }) ? 'secondary' : 'ghost'}
-        size="icon"
-        title="Heading 2"
-      >
-        <Heading2 className="h-4 w-4" />
-      </Button>
-       <Button
-        onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
-        variant={editor.isActive('heading', { level: 3 }) ? 'secondary' : 'ghost'}
-        size="icon"
-        title="Heading 3"
-      >
-        <Heading3 className="h-4 w-4" />
-      </Button>
-      <div className="h-6 w-px bg-border mx-1"></div>
-      <Button
-        onClick={() => editor.chain().focus().toggleBulletList().run()}
-        variant={editor.isActive('bulletList') ? 'secondary' : 'ghost'}
-        size="icon"
-        title="Bullet List"
-      >
-        <List className="h-4 w-4" />
-      </Button>
-      <Button
-        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-        variant={editor.isActive('orderedList') ? 'secondary' : 'ghost'}
-        size="icon"
-        title="Ordered List"
-      >
-        <ListOrdered className="h-4 w-4" />
-      </Button>
-      <Button
-        onClick={() => editor.chain().focus().toggleBlockquote().run()}
-        variant={editor.isActive('blockquote') ? 'secondary' : 'ghost'}
-        size="icon"
-        title="Blockquote"
-      >
-        <Quote className="h-4 w-4" />
-      </Button>
-      <Button
-        onClick={() => editor.chain().focus().toggleCodeBlock().run()}
-        variant={editor.isActive('codeBlock') ? 'secondary' : 'ghost'}
-        size="icon"
-        title="Code Block"
-      >
-        <SquareCode className="h-4 w-4" />
-      </Button>
-       <Button
-        onClick={() => editor.chain().focus().insertHorizontalRule().run()}
-        variant={'ghost'}
-        size="icon"
-        title="Insert Divider"
-      >
-        <Minus className="h-4 w-4" />
-      </Button>
-      <Button
-        onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
-        variant={'ghost'}
-        size="icon"
-        title="Insert Table"
-      >
-        <TableIcon className="h-4 w-4" />
-      </Button>
-      <Button
-        onClick={onInsertImage}
-        variant={'ghost'}
-        size="icon"
-        title="Insert Image"
-      >
-        <ImageIcon className="h-4 w-4" />
-      </Button>
-
-      {/* AI Buttons */}
-      <div className="h-6 w-px bg-border mx-1"></div>
-
-      <Button
-        onClick={onAiEnhance}
-        variant="ghost"
-        size="icon"
-        title="AI Enhance Text"
-        disabled={isAiLoading}
-      >
-        {isAiLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-        {!isAiLoading && <Sparkles className="h-4 w-4" />}
-      </Button>
-      <Button
-        onClick={onAutoFormat}
-        variant="ghost"
-        size="icon"
-        title="AI Auto-Format"
-        disabled={isAiLoading}
-      >
-        {isAiLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-        {!isAiLoading && <Pilcrow className="h-4 w-4" />}
-      </Button>
-      <Button
-        onClick={onSummarize}
-        variant="ghost"
-        size="icon"
-        title="Summarize Document"
-        disabled={isAiLoading}
-      >
-        {isAiLoading && <Loader2 className="h-4 w-4 animate-spin" />}
-        {!isAiLoading && <AlignLeft className="h-4 w-4" />}
-      </Button>
+    <div className="p-2 m-2 rounded-lg shadow-xl bg-background/90 backdrop-blur-sm flex items-center gap-1 flex-wrap sticky top-2 z-10">
+      {/* Formatting & Alignment Group */}
+      <div className="flex items-center gap-1 flex-wrap">
+        <Button
+          onClick={() => editor.chain().focus().toggleBold().run()}
+          variant={editor.isActive('bold') ? 'secondary' : 'ghost'}
+          size="icon"
+          title="Bold"
+        >
+          <Bold className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+          variant={editor.isActive('italic') ? 'secondary' : 'ghost'}
+          size="icon"
+          title="Italic"
+        >
+          <Italic className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+          variant={editor.isActive('heading', { level: 1 }) ? 'secondary' : 'ghost'}
+          size="icon"
+          title="Heading 1"
+        >
+          <Heading1 className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+          variant={editor.isActive('heading', { level: 2 }) ? 'secondary' : 'ghost'}
+          size="icon"
+          title="Heading 2"
+        >
+          <Heading2 className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()}
+          variant={editor.isActive('heading', { level: 3 }) ? 'secondary' : 'ghost'}
+          size="icon"
+          title="Heading 3"
+        >
+          <Heading3 className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => editor.chain().focus().toggleBulletList().run()}
+          variant={editor.isActive('bulletList') ? 'secondary' : 'ghost'}
+          size="icon"
+          title="Bullet List"
+        >
+          <List className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => editor.chain().focus().toggleOrderedList().run()}
+          variant={editor.isActive('orderedList') ? 'secondary' : 'ghost'}
+          size="icon"
+          title="Ordered List"
+        >
+          <ListOrdered className="h-4 w-4" />
+        </Button>
+         <Separator orientation="vertical" className="h-6 mx-1 bg-border" />
+        <Button
+          onClick={() => editor.chain().focus().setTextAlign('left').run()}
+          variant={editor.isActive({ textAlign: 'left' }) ? 'secondary' : 'ghost'}
+          size="icon"
+          title="Align Left"
+        >
+          <AlignLeft className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => editor.chain().focus().setTextAlign('center').run()}
+          variant={editor.isActive({ textAlign: 'center' }) ? 'secondary' : 'ghost'}
+          size="icon"
+          title="Align Center"
+        >
+          <AlignCenter className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => editor.chain().focus().setTextAlign('right').run()}
+          variant={editor.isActive({ textAlign: 'right' }) ? 'secondary' : 'ghost'}
+          size="icon"
+          title="Align Right"
+        >
+          <AlignRight className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => editor.chain().focus().setTextAlign('justify').run()}
+          variant={editor.isActive({ textAlign: 'justify' }) ? 'secondary' : 'ghost'}
+          size="icon"
+          title="Align Justify"
+        >
+          <AlignJustify className="h-4 w-4" />
+        </Button>
+      </div>
+      
+      <Separator orientation="vertical" className="h-6 mx-1 bg-border" />
+      
+      {/* Block Elements Group */}
+      <div className="flex items-center gap-1 flex-wrap">
+         <Button
+          onClick={() => editor.chain().focus().toggleCode().run()}
+          variant={editor.isActive('code') ? 'secondary' : 'ghost'}
+          size="icon"
+          title="Inline Code"
+        >
+          <Code className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => editor.chain().focus().toggleBlockquote().run()}
+          variant={editor.isActive('blockquote') ? 'secondary' : 'ghost'}
+          size="icon"
+          title="Blockquote"
+        >
+          <Quote className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => editor.chain().focus().toggleCodeBlock().run()}
+          variant={editor.isActive('codeBlock') ? 'secondary' : 'ghost'}
+          size="icon"
+          title="Code Block"
+        >
+          <SquareCode className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => editor.chain().focus().insertHorizontalRule().run()}
+          variant={'ghost'}
+          size="icon"
+          title="Insert Divider"
+        >
+          <Minus className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}
+          variant={'ghost'}
+          size="icon"
+          title="Insert Table"
+        >
+          <TableIcon className="h-4 w-4" />
+        </Button>
+        <Button
+          onClick={onInsertImage}
+          variant={'ghost'}
+          size="icon"
+          title="Insert Image"
+        >
+          <ImageIcon className="h-4 w-4" />
+        </Button>
+      </div>
+      
+      <Separator orientation="vertical" className="h-6 mx-1 bg-border" />
+      
+      {/* AI Tools Group */}
+      <div className="flex items-center gap-1 flex-wrap">
+        <Button
+          onClick={onAiEnhance}
+          variant="ghost"
+          size="icon"
+          title="AI Enhance Text"
+          disabled={isAiLoading}
+        >
+          {isAiLoading && activeAiTool === 'aiEnhance' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+        </Button>
+        <Button
+          onClick={onAutoFormat}
+          variant="ghost"
+          size="icon"
+          title="AI Auto-Format"
+          disabled={isAiLoading}
+        >
+           {isAiLoading && activeAiTool === 'aiAutoFormat' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pilcrow className="h-4 w-4" />}
+        </Button>
+        <Button
+          onClick={onSummarize}
+          variant="ghost"
+          size="icon"
+          title="Summarize Document"
+          disabled={isAiLoading}
+        >
+          {isAiLoading && activeAiTool === 'aiSummarize' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListCollapse className="h-4 w-4" />}
+        </Button>
+      </div>
     </div>
   );
 };
@@ -275,6 +322,8 @@ const TipTapToolbar = ({
 export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   const { toast } = useToast();
   const [isAiLoading, setIsAiLoading] = useState(false);
+  const [activeAiTool, setActiveAiTool] = useState<string | null>(null);
+
 
   const [isEnhanceDialogOpen, setIsEnhanceDialogOpen] = useState(false);
   const [textForEnhancement, setTextForEnhancement] = useState("");
@@ -318,14 +367,17 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       TableHeaderExtension,
       HardBreak, 
       HorizontalRule,
+      TextAlign.configure({
+        types: ['heading', 'paragraph'],
+      }),
     ],
-    content: value?.trim() ? value : "<p></p>",
+    content: value?.trim() && value !== "<p></p>" ? value : "<p></p>",
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
       const { selection } = editor.state;
       const { from, to } = selection;
 
-      if (selection.empty && from > 1) { 
+      if (selection.empty && from > 1 && !isSlashCommandMenuOpen) { 
         const textBeforeCursor = editor.state.doc.textBetween(from - 2, from, "\n");
         if (textBeforeCursor === "/ ") {
           const coords = editor.view.coordsAtPos(from);
@@ -340,16 +392,10 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
           }
           
           editor.chain().focus().deleteRange({ from: from - 2, to }).run();
-          setFocusedCommandIndex(0); // Reset focus to first item
+          setFocusedCommandIndex(0); 
           setIsSlashCommandMenuOpen(true);
           return; 
         }
-      }
-      if (isSlashCommandMenuOpen) {
-         const textBeforeCursor = editor.state.doc.textBetween(Math.max(0, from - 2), from, "\n");
-         if (textBeforeCursor.trim() !== "" || !selection.empty) { // If user types something else or moves cursor
-            // setIsSlashCommandMenuOpen(false); // Popover's onOpenChange will handle this
-         }
       }
     },
     editorProps: {
@@ -371,32 +417,35 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     { label: 'Divider', icon: Minus, action: (e) => e.chain().focus().setHorizontalRule().run() },
     { label: 'Table', icon: TableIcon, action: (e) => e.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() },
     { label: 'Image', icon: ImageIcon, action: () => handleOpenImageDialog() },
+    { label: 'Align Left', icon: AlignLeft, action: (e) => e.chain().focus().setTextAlign('left').run() },
+    { label: 'Align Center', icon: AlignCenter, action: (e) => e.chain().focus().setTextAlign('center').run() },
+    { label: 'Align Right', icon: AlignRight, action: (e) => e.chain().focus().setTextAlign('right').run() },
+    { label: 'Align Justify', icon: AlignJustify, action: (e) => e.chain().focus().setTextAlign('justify').run() },
   ] : [];
   
   useEffect(() => {
-    // Ensure commandButtonRefs array is the correct size
     commandButtonRefs.current = Array(slashCommands.length).fill(null);
   }, [slashCommands.length]);
 
   useEffect(() => {
-    if (isSlashCommandMenuOpen) {
-      menuContentRef.current?.focus(); // Focus the container first
+    if (isSlashCommandMenuOpen && menuContentRef.current) {
+      menuContentRef.current.focus(); 
       if (commandButtonRefs.current[focusedCommandIndex]) {
         commandButtonRefs.current[focusedCommandIndex]?.focus();
       }
     }
-  }, [isSlashCommandMenuOpen, focusedCommandIndex, slashCommands]); // Rerun if slashCommands changes (e.g. editor becomes available)
+  }, [isSlashCommandMenuOpen, focusedCommandIndex, slashCommands]);
 
 
   useEffect(() => {
     if (editor) {
       const currentHTML = editor.getHTML();
-      const newContent = value?.trim() ? value : "<p></p>";
+      const newContent = value?.trim() && value !== "<p></p>" ? value : "<p></p>";
 
       if (currentHTML !== newContent) {
         const { from, to } = editor.state.selection;
         editor.commands.setContent(newContent, false);
-        if (editor.isFocused && newContent !== "<p></p>") { 
+        if (editor.isFocused) { 
            try {
               if (from <= editor.state.doc.content.size && to <= editor.state.doc.content.size) {
                 editor.commands.setTextSelection({ from, to });
@@ -432,6 +481,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     }
     setTextForEnhancement(text);
     setOriginalSelectionRange(selection);
+    setActiveAiTool('aiEnhance'); 
     setIsEnhanceDialogOpen(true);
   };
 
@@ -444,6 +494,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     }
     setIsEnhanceDialogOpen(false);
     toast({ title: "Text Enhanced", description: "AI suggestion applied."});
+    setActiveAiTool(null);
   };
 
   const handleAutoFormat = async () => {
@@ -454,6 +505,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       return;
     }
     setIsAiLoading(true);
+    setActiveAiTool('aiAutoFormat');
     try {
       const result: AutoFormatTextOutput = await autoFormatText({ textToFormat: text });
       if (selection) {
@@ -467,6 +519,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       toast({ title: "AI Error", description: "Failed to auto-format text. Please try again.", variant: "destructive" });
     } finally {
       setIsAiLoading(false);
+      setActiveAiTool(null);
     }
   };
 
@@ -476,6 +529,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       return;
     }
     setIsAiLoading(true);
+    setActiveAiTool('aiSummarize');
     try {
       const docText = editor.getText();
       const result: GenerateProjectSummaryOutput = await generateProjectSummary({ textDocumentContent: docText });
@@ -486,6 +540,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       toast({ title: "AI Error", description: "Failed to generate summary. Please try again.", variant: "destructive" });
     } finally {
       setIsAiLoading(false);
+      setActiveAiTool(null);
     }
   };
 
@@ -504,7 +559,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   const executeSlashCommand = (commandAction: (editor: Editor) => void) => {
     if (!editor) return;
     commandAction(editor);
-    setIsSlashCommandMenuOpen(false); // Ensure menu closes
+    setIsSlashCommandMenuOpen(false); 
   };
 
   const handleSlashCommandKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -535,8 +590,21 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     }
   };
 
+  useEffect(() => {
+    // For AI loading states, to remove the active class from the editor if dialog is closed without applying
+    if (activeAiTool === 'aiEnhance' && !isEnhanceDialogOpen) {
+        setActiveAiTool(null);
+    }
+    if (activeAiTool === 'aiSummarize' && !isSummaryDialogOpen) {
+        setActiveAiTool(null);
+    }
+  }, [isEnhanceDialogOpen, isSummaryDialogOpen, activeAiTool]);
+
+
   return (
-    <div ref={editorWrapperRef} className="relative flex flex-col h-full rounded-lg border bg-card text-card-foreground shadow-sm">
+    <div ref={editorWrapperRef} className={cn(
+        "relative flex flex-col h-full rounded-lg border bg-card text-card-foreground shadow-sm"
+    )}>
       <Popover open={isSlashCommandMenuOpen} onOpenChange={setIsSlashCommandMenuOpen}>
         <PopoverAnchor
           style={{
@@ -548,7 +616,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
           }}
         />
         <PopoverContent
-          className="w-60 p-0" // No padding on content, padding on inner div
+          className="w-60 p-1" 
           sideOffset={5}
           align="start"
           onCloseAutoFocus={() => editor?.chain().focus().run()}
@@ -557,18 +625,18 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
             ref={menuContentRef}
             tabIndex={-1}
             onKeyDown={handleSlashCommandKeyDown}
-            className="p-1 focus:outline-none"
+            className="focus:outline-none"
           >
             {slashCommands.map((command, index) => (
               <button
-                key={command.label} // Use a unique key like label
+                key={command.label} 
                 ref={(el) => (commandButtonRefs.current[index] = el)}
                 onClick={() => executeSlashCommand(command.action)}
                 className={cn(
                   "flex items-center gap-2 w-full p-2 text-sm rounded-sm focus:outline-none",
                   index === focusedCommandIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/80"
                 )}
-                tabIndex={-1} // Individual buttons not in tab order
+                tabIndex={-1} 
               >
                 <command.icon className="h-4 w-4" />
                 <span>{command.label}</span>
@@ -588,17 +656,24 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
         onSummarize={handleSummarize}
         onInsertImage={handleOpenImageDialog}
         isAiLoading={isAiLoading}
+        activeAiTool={activeAiTool}
       />
       <EditorContent editor={editor} className="flex-grow h-full overflow-y-auto" />
 
       <AITextEnhancementDialog
         isOpen={isEnhanceDialogOpen}
-        onOpenChange={setIsEnhanceDialogOpen}
+        onOpenChange={(isOpen) => {
+            setIsEnhanceDialogOpen(isOpen);
+            if (!isOpen && activeAiTool === 'aiEnhance') setActiveAiTool(null);
+        }}
         initialText={textForEnhancement}
         onApply={onApplyEnhancement}
       />
 
-      <Dialog open={isSummaryDialogOpen} onOpenChange={setIsSummaryDialogOpen}>
+      <Dialog open={isSummaryDialogOpen} onOpenChange={(isOpen) => {
+        setIsSummaryDialogOpen(isOpen);
+        if (!isOpen && activeAiTool === 'aiSummarize') setActiveAiTool(null);
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Document Summary</DialogTitle>
@@ -615,7 +690,10 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
             />
           </ScrollArea>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsSummaryDialogOpen(false)}>Close</Button>
+            <Button variant="outline" onClick={() => {
+                setIsSummaryDialogOpen(false);
+                if (activeAiTool === 'aiSummarize') setActiveAiTool(null);
+            }}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -646,4 +724,3 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     </div>
   );
 }
-
