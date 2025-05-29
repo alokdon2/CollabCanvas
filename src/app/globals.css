@@ -272,4 +272,20 @@
     height: 0;
     opacity: 0.6; /* Adjusted opacity */
   }
+
+  /* Styles to hide specific Excalidraw menu items. These are workarounds. */
+  /* Note: These selectors are based on common Excalidraw DOM patterns and might
+     need adjustment if Excalidraw 0.17.0's structure is different.
+     They target links within the main menu dialog of Excalidraw. */
+
+  /* Hide the link on the Excalidraw logo (usually to excalidraw.com) */
+  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body a[href="https://excalidraw.com"],
+  /* Hide the link to Excalidraw GitHub repository */
+  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body a[href*="github.com/excalidraw"],
+  /* Hide the link to Excalidraw Twitter/X profile */
+  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body a[href*="twitter.com/excalidraw"],
+  /* Hide links to Excalidraw Plus (if any) */
+  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body a[href*="plus.excalidraw.com"] {
+      display: none !important;
+  }
 }
