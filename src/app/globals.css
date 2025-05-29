@@ -273,19 +273,29 @@
     opacity: 0.6; /* Adjusted opacity */
   }
 
-  /* Styles to hide specific Excalidraw menu items. These are workarounds. */
-  /* Note: These selectors are based on common Excalidraw DOM patterns and might
-     need adjustment if Excalidraw 0.17.0's structure is different.
-     They target links within the main menu dialog of Excalidraw. */
+  /* Styles to hide specific Excalidraw menu items (e.g., GitHub, Discord, Twitter links). */
+  /* These selectors target <a> tags with specific href attributes within common Excalidraw menu dialogs. */
+  /* The .excalidraw-wrapper class is assumed to be on a parent container of the Excalidraw component. */
+  /* The .excalidraw class is the root class of the Excalidraw component itself. */
+  /* .App-menu__dialog is a common class for the main menu container in Excalidraw. */
 
-  /* Hide the link on the Excalidraw logo (usually to excalidraw.com) */
+  .excalidraw-wrapper .excalidraw .App-menu__dialog a[href="https://excalidraw.com"],
+  .excalidraw-wrapper .excalidraw .App-menu__dialog a[href*="github.com/excalidraw"],
+  .excalidraw-wrapper .excalidraw .App-menu__dialog a[href*="discord.gg/excalidraw"],
+  .excalidraw-wrapper .excalidraw .App-menu__dialog a[href*="twitter.com/excalidraw"],
+  .excalidraw-wrapper .excalidraw .App-menu__dialog a[href*="plus.excalidraw.com"] {
+    display: none !important;
+  }
+
+  /* Fallback for potentially deeper structures involving .Island and .Dialog__body */
   .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body a[href="https://excalidraw.com"],
-  /* Hide the link to Excalidraw GitHub repository */
   .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body a[href*="github.com/excalidraw"],
-  /* Hide the link to Excalidraw Twitter/X profile */
+  .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body a[href*="discord.gg/excalidraw"],
   .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body a[href*="twitter.com/excalidraw"],
-  /* Hide links to Excalidraw Plus (if any) */
   .excalidraw-wrapper .excalidraw .Island.App-menu__dialog .Dialog__body a[href*="plus.excalidraw.com"] {
-      display: none !important;
+    display: none !important;
   }
 }
+
+
+    
