@@ -7,7 +7,7 @@ import type { ExcalidrawElement, AppState, BinaryFiles } from "@excalidraw/excal
 import type { WhiteboardData } from "@/lib/types";
 import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
-// import { useTheme } from "@/components/providers/ThemeProvider"; // Theme integration temporarily removed
+import { useTheme } from "@/components/providers/ThemeProvider";
 
 interface WhiteboardProps {
   initialData?: WhiteboardData | null; // This prop will be effectively ignored for now
@@ -20,6 +20,7 @@ const DynamicallyLoadedExcalidraw = dynamic(
   () => import("@excalidraw/excalidraw").then((mod) => {
     if (!mod.Excalidraw) {
       console.error("Excalidraw named export not found in @excalidraw/excalidraw module. Module keys:", Object.keys(mod));
+      // Return a component that renders the error message
       return () => <div className="flex h-full w-full items-center justify-center text-destructive-foreground bg-destructive p-4 rounded-lg">Failed to load Excalidraw component. Check console.</div>;
     }
     return mod.Excalidraw;
@@ -43,7 +44,7 @@ export function Whiteboard({
 }: WhiteboardProps) {
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const [isClient, setIsClient] = useState(false);
-  // const { theme: appTheme } = useTheme(); // Theme integration temporarily removed
+  const { theme: appTheme } = useTheme();
 
   useEffect(() => {
     setIsClient(true);
@@ -77,11 +78,12 @@ export function Whiteboard({
   }
   
   // Always use a fresh, minimal, blank JSON object for Excalidraw's initialData
+  // Ensure appState does not set viewBackgroundColor so Excalidraw's theme prop controls it.
   const freshInitialData: WhiteboardData = {
     elements: [],
     appState: {
-      // You can set a default background or other appState properties here if needed
-      // viewBackgroundColor: appTheme === 'dark' ? '#202124' : '#FFFFFF', // Example if theme was used
+      // Intentionally leaving viewBackgroundColor undefined here
+      // so Excalidraw's 'theme' prop dictates the background.
     }, 
     files: {}
   };
@@ -94,7 +96,7 @@ export function Whiteboard({
         onChange={debouncedOnChange} // This will not propagate changes to the parent
         viewModeEnabled={isReadOnly}
         uiOptions={{ canvasActions: { toggleMenu: false } }} // Hide the hamburger menu
-        // theme={appTheme === 'dark' ? 'dark' : 'light'} // Theme integration temporarily removed
+        theme={appTheme === 'dark' ? 'dark' : 'light'}
       />
     </div>
   );
