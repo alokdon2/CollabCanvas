@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { Whiteboard } from "@/components/Whiteboard";
-import type { Project, WhiteboardData, FileSystemNode } from "@/lib/types";
+import type { Project, WhiteboardData, FileSystemNode, ExcalidrawAppState } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderTree, Loader2, PanelLeftOpen, PlusCircle, FilePlus2, FolderPlus } from "lucide-react";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
@@ -44,12 +44,11 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useProjectContext } from "@/contexts/ProjectContext";
 import { FileExplorer } from "@/components/FileExplorer";
-// import { dbGetProjectById, dbSaveProject, dbDeleteProject } from "@/lib/indexedDB"; // No longer using IndexedDB for primary project operations
 import {
   loadProjectData as realtimeLoadProjectData,
   saveProjectData as realtimeSaveProjectData,
   subscribeToProjectUpdates as realtimeSubscribeToProjectUpdates,
-  deleteProjectFromFirestore // For deleting the entire project
+  deleteProjectFromFirestore 
 } from "@/services/realtimeCollaborationService";
 
 
@@ -58,7 +57,7 @@ type ViewMode = "editor" | "whiteboard" | "both";
 const DEFAULT_EMPTY_TEXT_CONTENT = "<p></p>";
 const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = {
   elements: [],
-  appState: { ZenModeEnabled: false, viewModeEnabled: false },
+  appState: { ZenModeEnabled: false, viewModeEnabled: false } as ExcalidrawAppState,
   files: {}
 };
 
@@ -66,7 +65,11 @@ const ensureNodeContentRecursive = (nodes: FileSystemNode[]): FileSystemNode[] =
   return nodes.map(node => ({
     ...node,
     textContent: node.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
-    whiteboardContent: node.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
+    whiteboardContent: node.whiteboardContent ? {
+        elements: node.whiteboardContent.elements || [],
+        appState: node.whiteboardContent.appState || { ...DEFAULT_EMPTY_WHITEBOARD_DATA.appState },
+        files: node.whiteboardContent.files || {},
+    } : { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
     ...(node.children && { children: ensureNodeContentRecursive(node.children) }),
   }));
 };
@@ -231,21 +234,24 @@ export default function ProjectPage() {
       return;
     }
 
+    const ensuredProjectData = {
+        ...projectData,
+        whiteboardContent: projectData.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
+        fileSystemRoots: ensureNodeContentRecursive(projectData.fileSystemRoots || [])
+    };
 
-    const ensuredFileSystemRoots = ensureNodeContentRecursive(projectData.fileSystemRoots || []);
+    setCurrentProject(ensuredProjectData);
+    setEditingProjectName(ensuredProjectData.name);
+    setCurrentProjectName(ensuredProjectData.name);
     
-    setCurrentProject({...projectData, fileSystemRoots: ensuredFileSystemRoots});
-    setEditingProjectName(projectData.name);
-    setCurrentProjectName(projectData.name);
-    
-    const rootText = projectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT;
-    const rootBoard = projectData.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA};
+    const rootText = ensuredProjectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT;
+    const rootBoard = ensuredProjectData.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA};
     setProjectRootTextContent(rootText);
     setProjectRootWhiteboardData(rootBoard);
-    setActiveFileSystemRoots(ensuredFileSystemRoots);
+    setActiveFileSystemRoots(ensuredProjectData.fileSystemRoots);
 
     const currentSelectedNodeId = selectedFileNodeId; 
-    const nodeToLoad = currentSelectedNodeId ? findNodeByIdRecursive(ensuredFileSystemRoots, currentSelectedNodeId) : null;
+    const nodeToLoad = currentSelectedNodeId ? findNodeByIdRecursive(ensuredProjectData.fileSystemRoots, currentSelectedNodeId) : null;
 
     if (nodeToLoad) {
       setActiveTextContent(nodeToLoad.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
@@ -288,15 +294,14 @@ export default function ProjectPage() {
                 return;
             }
             
-            // Use a local snapshot of currentProject for comparison
             setCurrentProject(currentProj => {
                 if (currentProj && new Date(updatedProject.updatedAt) <= new Date(currentProj.updatedAt)) {
                     console.log("[ProjectPage Realtime] Incoming update is older or same as current client state, skipping to prevent race condition.", updatedProject.updatedAt, "vs", currentProj.updatedAt);
-                    return currentProj; // Return current state, no update
+                    return currentProj; 
                 }
                 updateLocalStateFromProject(updatedProject, "realtimeUpdate");
-                lastSavedToServerTimestampRef.current = updatedProject.updatedAt; // Update with timestamp from server
-                return updatedProject; // Return new state
+                lastSavedToServerTimestampRef.current = updatedProject.updatedAt; 
+                return updatedProject; 
             });
 
           });
@@ -336,7 +341,7 @@ export default function ProjectPage() {
         unsubscribeRealtime();
       }
     };
-  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder, updateLocalStateFromProject]);
+  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder]); // Removed updateLocalStateFromProject from dependencies
 
 
   useEffect(() => {
@@ -431,11 +436,11 @@ export default function ProjectPage() {
   const handleWhiteboardChange = useCallback((newData: WhiteboardData) => {
     const oldElementsString = JSON.stringify(activeWhiteboardDataRef.current?.elements || []);
     const newElementsString = JSON.stringify(newData.elements || []);
+    const oldAppStateString = JSON.stringify(activeWhiteboardDataRef.current?.appState || {});
+    const newAppStateString = JSON.stringify(newData.appState || {});
 
-    if (newElementsString !== oldElementsString || 
-        newData.appState?.viewBackgroundColor !== activeWhiteboardDataRef.current?.appState?.viewBackgroundColor
-       ) {
-        
+
+    if (newElementsString !== oldElementsString || newAppStateString !== oldAppStateString) {
         setActiveWhiteboardData(newData); 
 
         if (selectedFileNodeId) { 
@@ -673,8 +678,8 @@ export default function ProjectPage() {
     );
   }
   
-  const editorKey = selectedFileNodeId || 'project-root-editor';
-  const whiteboardKey = selectedFileNodeId || 'project-root-whiteboard';
+  const editorKey = `editor-${selectedFileNodeId || 'project-root'}`;
+  const whiteboardKey = `whiteboard-${selectedFileNodeId || 'project-root'}`;
 
   return (
     <div className="flex h-screen flex-col fixed inset-0 pt-14">  
