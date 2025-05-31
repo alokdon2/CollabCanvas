@@ -61,8 +61,7 @@ const updateNodeInTreeRecursive = (
   newContent: { textContent?: string; whiteboardContent?: WhiteboardData | null }
 ): FileSystemNode[] => {
   return nodes.map(node => {
-    if (node.id === nodeId && node.type === 'file') {
-      // Create a new node object with updated content
+    if (node.id === nodeId) { // Update content if ID matches, regardless of type
       const updatedNode = { ...node, ...newContent }; 
       return updatedNode;
     }
@@ -186,7 +185,7 @@ export default function ProjectPage() {
   const [mounted, setMounted] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("both");
   const [isExplorerVisible, setIsExplorerVisible] = useState(true);
-  const [selectedFileNodeId, setSelectedFileNodeId] = useState<string | null>(null); // ID of the *file* being edited, or null if root/folder
+  const [selectedFileNodeId, setSelectedFileNodeId] = useState<string | null>(null); // ID of the file OR FOLDER being edited, or null if root
 
   const [isNewItemDialogOpen, setIsNewItemDialogOpen] = useState(false);
   const [newItemType, setNewItemType] = useState<'file' | 'folder' | null>(null);
@@ -207,7 +206,20 @@ export default function ProjectPage() {
       try {
         const projectData = await dbGetProjectById(projectId);
         if (projectData) {
-          setCurrentProject(projectData);
+          // Ensure all file and folder nodes have default content if missing
+          const ensuredFileSystemRoots = (projectData.fileSystemRoots || []).map(node => ({
+            ...node,
+            textContent: node.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
+            whiteboardContent: node.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA},
+            ...(node.type === 'folder' && node.children ? { children: node.children.map(child => ({
+                ...child,
+                textContent: child.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
+                whiteboardContent: child.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA},
+            }))} : {})
+          }));
+
+
+          setCurrentProject({...projectData, fileSystemRoots: ensuredFileSystemRoots});
           setEditingProjectName(projectData.name);
           setCurrentProjectName(projectData.name);
           
@@ -219,7 +231,7 @@ export default function ProjectPage() {
           setActiveTextContent(rootText); 
           setActiveWhiteboardData({...rootBoard}); 
           activeWhiteboardDataRef.current = {...rootBoard}; 
-          setActiveFileSystemRoots(projectData.fileSystemRoots || []);
+          setActiveFileSystemRoots(ensuredFileSystemRoots);
           setSelectedFileNodeId(null); // Initially, project root is active
         } else {
           toast({ title: "Error", description: "Project not found.", variant: "destructive" });
@@ -259,8 +271,6 @@ export default function ProjectPage() {
       if (projectToSave.name !== currentProjectNameFromContext) {
         setCurrentProjectName(projectToSave.name);
       }
-      // Only show save toast if it's not part of an immediate switch or delete operation
-      // This reduces toast spam. A more sophisticated approach might be needed if fine-grained toast control is desired.
       if (!saveTimeoutRef.current) { 
           toast({ title: "Progress Saved", description: "Your changes have been saved.", duration: 2000 });
       }
@@ -296,11 +306,10 @@ export default function ProjectPage() {
     saveTimeoutRef.current = setTimeout(async () => {
       if (pendingSaveDataRef.current?.project) {
         const projectBeingSaved = pendingSaveDataRef.current.project;
-        pendingSaveDataRef.current = null; // Clear before async operation
-        saveTimeoutRef.current = null; // Clear ref before async
+        pendingSaveDataRef.current = null; 
+        saveTimeoutRef.current = null; 
         await performSave(projectBeingSaved);
         toast({ title: "Auto-Saved", description: "Changes automatically saved.", duration: 2000});
-
       }
     }, 1500);
 
@@ -314,12 +323,12 @@ export default function ProjectPage() {
     projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots, 
     editingProjectName, 
     mounted, isLoadingProject, currentProject, 
-    performSave, toast // Added toast
+    performSave, toast
   ]);
 
   const handleTextChange = useCallback((newText: string) => {
     setActiveTextContent(newText); 
-    if (selectedFileNodeId) {
+    if (selectedFileNodeId) { // File or Folder is selected
       setActiveFileSystemRoots(prevRoots => 
         updateNodeInTreeRecursive(prevRoots, selectedFileNodeId, { textContent: newText })
       );
@@ -338,7 +347,7 @@ export default function ProjectPage() {
         
         setActiveWhiteboardData(newData); 
 
-        if (selectedFileNodeId) {
+        if (selectedFileNodeId) { // File or Folder is selected
             setActiveFileSystemRoots(prevRoots => 
               updateNodeInTreeRecursive(prevRoots, selectedFileNodeId, { whiteboardContent: newData })
             );
@@ -361,13 +370,12 @@ export default function ProjectPage() {
             fileSystemRoots: activeFileSystemRoots,
         };
         try {
-          // Force save before renaming
           if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
             clearTimeout(saveTimeoutRef.current);
             saveTimeoutRef.current = null;
             await performSave(pendingSaveDataRef.current.project);
             pendingSaveDataRef.current = null;
-          } else if (pendingSaveDataRef.current?.project) { // Save if data exists but no timeout (e.g. immediate pending)
+          } else if (pendingSaveDataRef.current?.project) {
              await performSave(pendingSaveDataRef.current.project);
              pendingSaveDataRef.current = null;
           }
@@ -420,9 +428,9 @@ export default function ProjectPage() {
       id: crypto.randomUUID(),
       name: newItemName.trim(),
       type: newItemType,
-      ...(newItemType === 'file' 
-        ? { textContent: DEFAULT_EMPTY_TEXT_CONTENT, whiteboardContent: {...DEFAULT_EMPTY_WHITEBOARD_DATA} } 
-        : { children: [] }),
+      textContent: DEFAULT_EMPTY_TEXT_CONTENT, // Initialize for both files and folders
+      whiteboardContent: {...DEFAULT_EMPTY_WHITEBOARD_DATA}, // Initialize for both
+      ...(newItemType === 'folder' ? { children: [] } : {}), // children only for folders
     };
     
     setActiveFileSystemRoots(prevRoots => addNodeToTreeRecursive(prevRoots, parentIdForNewItem, newNode));
@@ -439,40 +447,38 @@ export default function ProjectPage() {
       saveTimeoutRef.current = null;
       
       let projectDataToForceSave: Project | null = null;
-      if(currentProject){ // Ensure currentProject is defined
+      if(currentProject){
           projectDataToForceSave = {
             id: currentProject.id,
             createdAt: currentProject.createdAt,
-            name: editingProjectName || currentProject.name, // Use current editing name
+            name: editingProjectName || currentProject.name,
             fileSystemRoots: [...activeFileSystemRoots], 
-            textContent: projectRootTextContent, // Use current root text
-            whiteboardContent: projectRootWhiteboardData, // Use current root board
+            textContent: projectRootTextContent, 
+            whiteboardContent: projectRootWhiteboardData,
             updatedAt: new Date().toISOString(),
           };
       }
-      await performSave(projectDataToForceSave); // Pass the constructed data
+      await performSave(projectDataToForceSave); 
       pendingSaveDataRef.current = null; 
     }
 
-    const isFile = selectedNode && selectedNode.type === 'file';
-    const newSelectedFileNodeId = isFile ? selectedNode.id : null;
-    setSelectedFileNodeId(newSelectedFileNodeId);
+    const newSelectedNodeId = selectedNode ? selectedNode.id : null;
+    setSelectedFileNodeId(newSelectedNodeId);
 
-    if (isFile && selectedNode) { // selectedNode will be defined if isFile is true
+    if (selectedNode) { // A file or folder is selected
         setActiveTextContent(selectedNode.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
         const newBoardData = selectedNode.whiteboardContent ? {...selectedNode.whiteboardContent} : {...DEFAULT_EMPTY_WHITEBOARD_DATA};
         setActiveWhiteboardData(newBoardData);
-        activeWhiteboardDataRef.current = newBoardData; // Keep ref in sync
-    } else { // A folder is selected or no node is selected (root)
+        activeWhiteboardDataRef.current = newBoardData; 
+    } else { // Project root is active (no node selected)
         setActiveTextContent(projectRootTextContent);
-        setActiveWhiteboardData({...projectRootWhiteboardData}); // Ensure new object reference
-        activeWhiteboardDataRef.current = {...projectRootWhiteboardData}; // Keep ref in sync
+        setActiveWhiteboardData({...projectRootWhiteboardData});
+        activeWhiteboardDataRef.current = {...projectRootWhiteboardData};
     }
   }, [
     performSave, 
     projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots,
-    currentProject, editingProjectName, // Include all relevant states that construct the project data
-    // setActiveTextContent, setActiveWhiteboardData, setSelectedFileNodeId are stable setters
+    currentProject, editingProjectName, 
   ]);
 
 
@@ -503,7 +509,6 @@ export default function ProjectPage() {
     const newRoots = deleteNodeFromTreeRecursive(activeFileSystemRoots, nodeToDeleteId);
     setActiveFileSystemRoots(newRoots); 
 
-    // If the deleted node was the one whose content was being shown, revert to project root content
     if (selectedFileNodeId === nodeToDeleteId) {
         setSelectedFileNodeId(null); 
         setActiveTextContent(projectRootTextContent);
@@ -541,7 +546,6 @@ export default function ProjectPage() {
         return prevRoots;
       }
 
-      // Prevent dragging a folder into its own child
       if (targetFolderId && removedNode.type === 'folder') {
         let currentParentId: string | null = targetFolderId;
         const findParentRecursive = (nodes: FileSystemNode[], id: string): FileSystemNode | null => {
@@ -558,9 +562,9 @@ export default function ProjectPage() {
         while(currentParentId) {
             if (currentParentId === draggedNodeId) {
                 toast({ title: "Invalid Move", description: "Cannot move a folder into one of its own subfolders.", variant: "destructive" });
-                return prevRoots; // Return original roots to prevent the invalid move
+                return prevRoots; 
             }
-            const parentOfCurrentTarget = findParentRecursive(prevRoots, currentParentId); // Search in original unfiltered roots
+            const parentOfCurrentTarget = findParentRecursive(prevRoots, currentParentId); 
             currentParentId = parentOfCurrentTarget ? parentOfCurrentTarget.id : null;
         }
       }
@@ -576,8 +580,8 @@ export default function ProjectPage() {
   if (!mounted || isLoadingProject || !currentProject) {
     return (
       <div className="flex min-h-screen flex-col fixed inset-0 pt-14"> 
-         <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="container flex h-14 items-center px-4 sm:px-6 lg:px-8"> 
+         <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-14">
+            <div className="container flex h-full items-center px-4 sm:px-6 lg:px-8"> 
                 <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2">
                     <ArrowLeft className="h-5 w-5" />
                 </Button>
@@ -595,8 +599,8 @@ export default function ProjectPage() {
   
   return (
     <div className="flex h-screen flex-col fixed inset-0 pt-14">  
-       <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 items-center px-4 sm:px-6 lg:px-8"> 
+       <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-14">
+        <div className="container flex h-full items-center px-4 sm:px-6 lg:px-8"> 
           <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2" aria-label="Back to dashboard">
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -704,7 +708,7 @@ export default function ProjectPage() {
                     onDeleteNode={handleDeleteNodeRequest} 
                     onAddFileToFolder={onAddFileToFolderCallback}
                     onAddFolderToFolder={onAddFolderToFolderCallback}
-                    selectedNodeId={selectedFileNodeId} // Pass the ID of the active file, or null
+                    selectedNodeId={selectedFileNodeId} 
                     onMoveNode={handleMoveNode}
                   />
                 </div>
@@ -818,3 +822,4 @@ export default function ProjectPage() {
     </div>
   );
 }
+

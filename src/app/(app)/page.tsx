@@ -4,22 +4,32 @@
 import { useState, useEffect, useCallback } from "react";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
 import { ProjectCard } from "@/components/ProjectCard";
-import type { Project } from "@/lib/types";
+import type { Project, FileSystemNode, WhiteboardData } from "@/lib/types"; // Added WhiteboardData
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
 import { Search, LayoutDashboard, FolderOpen, Loader2 } from "lucide-react";
 import { dbGetAllProjects, dbSaveProject, dbDeleteProject, dbSaveAllProjects } from "@/lib/indexedDB";
 import { useToast } from "@/hooks/use-toast";
 
+const DEFAULT_EMPTY_TEXT_CONTENT = "<p></p>"; // Define if not already
+const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = { // Define if not already
+  elements: [],
+  appState: { ZenModeEnabled: false, viewModeEnabled: false },
+  files: {}
+};
+
 const initialProjects: Project[] = [
   {
     id: "1",
     name: "My First Project",
     textContent: "<p>This is the content of my first project's document.</p><p>You can <strong>bold</strong> text, make it <em>italic</em>, or create headings!</p><h1>Heading 1</h1><h2>Heading 2</h2><ul><li>Bullet list item 1</li><li>Bullet list item 2</li></ul><ol><li>Numbered list item 1</li><li>Numbered list item 2</li></ol>",
-    whiteboardContent: null, // Excalidraw handles its own default
+    whiteboardContent: null,
     fileSystemRoots: [
-      { id: 'folder-1', name: 'Documents', type: 'folder', children: [
-        { id: 'file-1-1', name: 'Meeting Notes.txt', type: 'file', content: 'Initial notes here.', textContent: '<p>Initial notes here.</p>', whiteboardContent: null },
+      { id: 'folder-1', name: 'Documents', type: 'folder', 
+        textContent: '<p>This is content for the Documents folder itself.</p>', 
+        whiteboardContent: null,
+        children: [
+          { id: 'file-1-1', name: 'Meeting Notes.txt', type: 'file', content: 'Initial notes here.', textContent: '<p>Initial notes here.</p>', whiteboardContent: null },
       ]},
       { id: 'file-2', name: 'Readme.md', type: 'file', content: '# Project Readme', textContent: '<h1>Project Readme</h1>', whiteboardContent: null }
     ],
@@ -27,6 +37,16 @@ const initialProjects: Project[] = [
     updatedAt: new Date().toISOString(),
   },
 ];
+
+// Helper function to ensure all nodes (files and folders) have content fields
+const ensureNodeContentDefaults = (nodes: FileSystemNode[]): FileSystemNode[] => {
+  return nodes.map(node => ({
+    ...node,
+    textContent: node.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
+    whiteboardContent: node.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
+    ...(node.children && { children: ensureNodeContentDefaults(node.children) }),
+  }));
+};
 
 
 export default function DashboardPage() {
@@ -45,23 +65,24 @@ export default function DashboardPage() {
       try {
         let dbProjects = await dbGetAllProjects();
         if (dbProjects.length === 0 && initialProjects.length > 0) {
-          await dbSaveAllProjects(initialProjects.map(p => ({
+          const projectsWithEnsuredContent = initialProjects.map(p => ({
             ...p,
-            fileSystemRoots: p.fileSystemRoots?.map(r => ({
-              ...r,
-              ...(r.type === 'file' ? { textContent: r.textContent || '<p></p>', whiteboardContent: r.whiteboardContent || null } : {})
-            })) || []
-          })));
-          dbProjects = initialProjects;
+            textContent: p.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
+            whiteboardContent: p.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
+            fileSystemRoots: ensureNodeContentDefaults(p.fileSystemRoots || [])
+          }));
+          await dbSaveAllProjects(projectsWithEnsuredContent);
+          dbProjects = projectsWithEnsuredContent;
         }
-        const projectsWithRoots = dbProjects.map(p => ({
+        
+        const projectsWithFinalContentDefaults = dbProjects.map(p => ({
           ...p,
-          fileSystemRoots: p.fileSystemRoots?.map(r => ({ // Ensure file nodes have content
-             ...r,
-              ...(r.type === 'file' ? { textContent: r.textContent || '<p></p>', whiteboardContent: r.whiteboardContent || null } : {})
-          })) || []
+          textContent: p.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
+          whiteboardContent: p.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
+          fileSystemRoots: ensureNodeContentDefaults(p.fileSystemRoots || [])
         }));
-        setProjects(projectsWithRoots);
+
+        setProjects(projectsWithFinalContentDefaults);
       } catch (error) {
         console.error("Failed to load projects from DB", error);
         toast({ title: "Error", description: `Could not load projects: ${(error as Error).message}`, variant: "destructive" });
@@ -69,10 +90,10 @@ export default function DashboardPage() {
         setIsLoading(false);
       }
     }
-    if (typeof window !== 'undefined') { // Ensure IndexedDB is available
+    if (typeof window !== 'undefined') { 
         loadProjects();
     } else {
-        setIsLoading(false); // Not in browser, stop loading
+        setIsLoading(false); 
     }
   }, [toast]);
 
@@ -82,9 +103,9 @@ export default function DashboardPage() {
       id: crypto.randomUUID(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      fileSystemRoots: [], // Ensure this is initialized
-      textContent: newProjectData.textContent || "<p></p>",
-      whiteboardContent: newProjectData.whiteboardContent || null,
+      fileSystemRoots: ensureNodeContentDefaults(newProjectData.fileSystemRoots || []),
+      textContent: newProjectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
+      whiteboardContent: newProjectData.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA},
     };
     try {
       await dbSaveProject(newProject);
@@ -186,3 +207,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

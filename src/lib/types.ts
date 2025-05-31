@@ -55,7 +55,7 @@ export interface FileSystemNode {
   name: string;
   type: 'file' | 'folder';
   children?: FileSystemNode[];
-  // Content specific to files
+  // Content specific to files AND folders
   textContent?: string; 
   whiteboardContent?: WhiteboardData | null;
   content?: string; // Legacy or for simple text, can be phased out or used for non-editor files
@@ -64,10 +64,11 @@ export interface FileSystemNode {
 export interface Project {
   id: string;
   name: string;
-  // Root level content for when no file is selected
+  // Root level content for when no file or folder is selected (or for project overview)
   textContent: string;
   whiteboardContent: WhiteboardData | null;
   fileSystemRoots: FileSystemNode[];
   createdAt: string; 
   updatedAt: string; 
 }
+
