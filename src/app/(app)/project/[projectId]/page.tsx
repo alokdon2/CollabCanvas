@@ -64,6 +64,31 @@ const deleteNodeFromTree = (
   });
 };
 
+const updateNodeInTreeRecursive = (
+  nodes: FileSystemNode[],
+  nodeId: string,
+  newContent: { textContent?: string; whiteboardContent?: WhiteboardData | null }
+): FileSystemNode[] => {
+  return nodes.map(node => {
+    if (node.id === nodeId && node.type === 'file') {
+      // Create a new node object with updated content
+      const updatedNode = { ...node };
+      if (newContent.textContent !== undefined) {
+        updatedNode.textContent = newContent.textContent;
+      }
+      if (newContent.whiteboardContent !== undefined) {
+        updatedNode.whiteboardContent = newContent.whiteboardContent;
+      }
+      return updatedNode;
+    }
+    if (node.children) {
+      return { ...node, children: updateNodeInTreeRecursive(node.children, nodeId, newContent) };
+    }
+    return node;
+  });
+};
+
+
 export default function ProjectPage() {
   const router = useRouter();
   const params = useParams();
@@ -100,7 +125,7 @@ export default function ProjectPage() {
   const [nodeToDeleteId, setNodeToDeleteId] = useState<string | null>(null);
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const pendingSaveDataRef = useRef<{ project: Project } | null>(null);
+  const pendingSaveDataRef = useRef<{ project: Project } | null>(null); // Keep this to know if a save is pending
 
   useEffect(() => {
     setMounted(true);
@@ -172,42 +197,20 @@ export default function ProjectPage() {
   }, [currentProjectNameFromContext, setCurrentProjectName]);
 
 
+  // This useEffect is now primarily for debounced auto-saving based on content changes
   useEffect(() => {
     if (!mounted || isLoadingProject || !currentProject) return;
 
     const constructProjectDataToSave = (): Project => {
-      const projectData: Project = {
-        id: currentProject.id, 
-        createdAt: currentProject.createdAt, 
+      return {
+        id: currentProject.id,
+        createdAt: currentProject.createdAt,
         name: editingProjectName || currentProject.name,
-        fileSystemRoots: [...activeFileSystemRoots], 
-        textContent: projectRootTextContent,       
-        whiteboardContent: projectRootWhiteboardData, 
+        fileSystemRoots: [...activeFileSystemRoots], // This now contains the latest file contents
+        textContent: projectRootTextContent, // Root content
+        whiteboardContent: projectRootWhiteboardData, // Root content
         updatedAt: new Date().toISOString(),
       };
-
-      if (selectedFileNodeId) {
-        const updateNodeContentRecursive = (nodes: FileSystemNode[]): FileSystemNode[] => {
-          return nodes.map(node => {
-            if (node.id === selectedFileNodeId && node.type === 'file') {
-              return {
-                ...node,
-                textContent: activeTextContent,
-                whiteboardContent: activeWhiteboardData,
-              };
-            }
-            if (node.children) {
-              return { ...node, children: updateNodeContentRecursive(node.children) };
-            }
-            return node;
-          });
-        };
-        projectData.fileSystemRoots = updateNodeContentRecursive(projectData.fileSystemRoots);
-      } else { 
-        projectData.textContent = activeTextContent;
-        projectData.whiteboardContent = activeWhiteboardData;
-      }
-      return projectData;
     };
     
     const currentDataToSave = constructProjectDataToSave();
@@ -220,7 +223,7 @@ export default function ProjectPage() {
     saveTimeoutRef.current = setTimeout(async () => {
       if (pendingSaveDataRef.current?.project) {
         await performSave(pendingSaveDataRef.current.project);
-        // pendingSaveDataRef.current = null; // Cleared after save, or before new content load
+        // pendingSaveDataRef.current = null; // Cleared after save or before new content load
       }
     }, 1500);
 
@@ -230,36 +233,64 @@ export default function ProjectPage() {
       }
     };
   }, [
-    activeTextContent, activeWhiteboardData, activeFileSystemRoots,
-    editingProjectName, selectedFileNodeId, 
-    projectRootTextContent, projectRootWhiteboardData, 
+    projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots, // Core content states
+    editingProjectName, // For project name changes
     mounted, isLoadingProject, currentProject,
-    performSave // performSave is a dependency
+    performSave
   ]);
 
 
   const handleTextChange = useCallback((newText: string) => {
-    setActiveTextContent(newText);
-  }, []); 
+    setActiveTextContent(newText); // Update active view immediately
+    if (selectedFileNodeId) {
+      setActiveFileSystemRoots(prevRoots => 
+        updateNodeInTreeRecursive(prevRoots, selectedFileNodeId, { textContent: newText })
+      );
+    } else {
+      setProjectRootTextContent(newText); // Editing project root
+    }
+  }, [selectedFileNodeId, setActiveFileSystemRoots, setProjectRootTextContent]); 
   
   const handleWhiteboardChange = useCallback((newData: WhiteboardData) => {
     if (JSON.stringify(newData.elements) !== JSON.stringify(activeWhiteboardDataRef.current?.elements || [])) {
-        setActiveWhiteboardData(newData);
+        setActiveWhiteboardData(newData); // Update active view immediately
+        if (selectedFileNodeId) {
+            setActiveFileSystemRoots(prevRoots => 
+              updateNodeInTreeRecursive(prevRoots, selectedFileNodeId, { whiteboardContent: newData })
+            );
+        } else {
+            setProjectRootWhiteboardData(newData); // Editing project root
+        }
     } else {
         if(newData.appState?.viewBackgroundColor !== activeWhiteboardDataRef.current?.appState?.viewBackgroundColor) {
-            setActiveWhiteboardData(newData);
+             setActiveWhiteboardData(newData);
+             if (selectedFileNodeId) {
+                setActiveFileSystemRoots(prevRoots => 
+                  updateNodeInTreeRecursive(prevRoots, selectedFileNodeId, { whiteboardContent: newData })
+                );
+            } else {
+                setProjectRootWhiteboardData(newData);
+            }
         }
     }
-  }, []); 
+  }, [selectedFileNodeId, setActiveFileSystemRoots, setProjectRootWhiteboardData]); 
   
   const handleNameEditToggle = useCallback(async () => {
     if (isEditingName && currentProject) {
       const newName = editingProjectName.trim();
       if (newName && newName !== currentProject.name) {
-        const updatedProject = { ...currentProject, name: newName, updatedAt: new Date().toISOString() };
+        const updatedProjectData = { 
+            ...currentProject, 
+            name: newName, 
+            updatedAt: new Date().toISOString(),
+            // Ensure current content is part of this save
+            textContent: projectRootTextContent,
+            whiteboardContent: projectRootWhiteboardData,
+            fileSystemRoots: activeFileSystemRoots,
+        };
         try {
-          await dbSaveProject(updatedProject); 
-          setCurrentProject(updatedProject); 
+          await dbSaveProject(updatedProjectData); 
+          setCurrentProject(updatedProjectData); 
           setCurrentProjectName(newName);    
           toast({title: "Project Renamed", description: `Project name updated to "${newName}".`});
         } catch (error) {
@@ -271,7 +302,7 @@ export default function ProjectPage() {
       }
     }
     setIsEditingName(!isEditingName);
-  }, [isEditingName, currentProject, editingProjectName, setCurrentProjectName, toast]);
+  }, [isEditingName, currentProject, editingProjectName, setCurrentProjectName, toast, projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots]);
 
 
   const confirmDeleteProject = useCallback(async () => {
@@ -345,10 +376,30 @@ export default function ProjectPage() {
   };
 
   const handleNodeSelectedInExplorer = useCallback(async (selectedNode: FileSystemNode | null) => {
+    // Force save of any pending changes for the *previous* selection
     if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
-      await performSave(pendingSaveDataRef.current.project);
+      // Construct the save data based on the *previous* selectedFileNodeId
+      // to ensure the correct content (root or file) is captured.
+      // This part is tricky because pendingSaveDataRef.current.project might already be
+      // slightly stale if text/whiteboard changes happened rapidly without triggering the debounced save.
+      // The new approach of updating activeFileSystemRoots directly helps here.
+      
+      // Let's reconstruct the project data explicitly for the last state
+      let projectDataToForceSave: Project | null = null;
+      if(currentProject){
+          projectDataToForceSave = {
+            id: currentProject.id,
+            createdAt: currentProject.createdAt,
+            name: editingProjectName || currentProject.name,
+            fileSystemRoots: [...activeFileSystemRoots], // This *should* have the latest from previous file
+            textContent: projectRootTextContent,
+            whiteboardContent: projectRootWhiteboardData,
+            updatedAt: new Date().toISOString(),
+          };
+      }
+      await performSave(projectDataToForceSave);
       pendingSaveDataRef.current = null; 
     }
 
@@ -359,14 +410,18 @@ export default function ProjectPage() {
         setActiveTextContent(selectedNode.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
         const newBoardData = selectedNode.whiteboardContent ? {...selectedNode.whiteboardContent} : {...DEFAULT_EMPTY_WHITEBOARD_DATA};
         setActiveWhiteboardData(newBoardData);
+        activeWhiteboardDataRef.current = newBoardData; // Keep ref in sync
     } else { 
+        // Switched to a folder or cleared selection (implicitly project root)
         setActiveTextContent(projectRootTextContent);
         setActiveWhiteboardData({...projectRootWhiteboardData});
+        activeWhiteboardDataRef.current = {...projectRootWhiteboardData}; // Keep ref in sync
     }
   }, [
     performSave, 
-    projectRootTextContent, projectRootWhiteboardData, 
-    setActiveTextContent, setActiveWhiteboardData, setSelectedFileNodeId
+    projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots,
+    currentProject, editingProjectName, 
+    // No need for state setters in deps if only reading state that changes outside
   ]);
 
 
@@ -375,30 +430,40 @@ export default function ProjectPage() {
   }, []);
 
   const confirmDeleteNode = useCallback(async () => {
-    if (!nodeToDeleteId) return;
+    if (!nodeToDeleteId || !currentProject) return;
 
-     // Force save pending changes before deleting
     if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
-      await performSave(pendingSaveDataRef.current.project);
+      // Force save before delete
+       const projectDataToForceSave = {
+            id: currentProject.id,
+            createdAt: currentProject.createdAt,
+            name: editingProjectName || currentProject.name,
+            fileSystemRoots: [...activeFileSystemRoots],
+            textContent: projectRootTextContent,
+            whiteboardContent: projectRootWhiteboardData,
+            updatedAt: new Date().toISOString(),
+        };
+      await performSave(projectDataToForceSave);
       pendingSaveDataRef.current = null;
     }
 
     const nodeBeingDeleted = findNodeByIdRecursive(activeFileSystemRoots, nodeToDeleteId);
-    setActiveFileSystemRoots(prevRoots => deleteNodeFromTree(prevRoots, nodeToDeleteId));
+    const newRoots = deleteNodeFromTree(activeFileSystemRoots, nodeToDeleteId);
+    setActiveFileSystemRoots(newRoots); // This will trigger auto-save effect
 
     if (selectedFileNodeId === nodeToDeleteId) {
         setSelectedFileNodeId(null); 
         setActiveTextContent(projectRootTextContent);
         setActiveWhiteboardData({...projectRootWhiteboardData});
+        activeWhiteboardDataRef.current = {...projectRootWhiteboardData};
     }
     toast({ title: "Item Deleted", description: `"${nodeBeingDeleted?.name || 'Item'}" has been removed.` });
     setNodeToDeleteId(null); 
   }, [
     nodeToDeleteId, selectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, 
-    toast, activeFileSystemRoots, performSave, setActiveFileSystemRoots, 
-    setActiveTextContent, setActiveWhiteboardData, setSelectedFileNodeId
+    toast, activeFileSystemRoots, performSave, currentProject, editingProjectName
   ]);
 
 
@@ -630,3 +695,5 @@ export default function ProjectPage() {
 }
     
  
+
+    
