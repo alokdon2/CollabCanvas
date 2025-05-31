@@ -25,28 +25,23 @@ export interface ExcalidrawElement {
   updated: number;
   link: string | null;
   locked: boolean;
-  // For text elements
   text?: string;
   fontSize?: number;
   fontFamily?: number;
   textAlign?: string;
   verticalAlign?: string;
   baseline?: number;
-  // For other element types, add their specific properties if needed
   [key: string]: any;
 }
 
-// A simplified representation, Excalidraw's AppState is more complex
 export interface ExcalidrawAppState {
   viewBackgroundColor?: string;
   currentItemStrokeColor?: string;
-  // Add other AppState properties you want to store/restore
   [key: string]: any;
 }
 
-// A simplified representation for Excalidraw's BinaryFiles
 export interface ExcalidrawBinaryFiles {
-  [id: string]: any; // Typically { dataURL: string, mimeType: string, created: number }
+  [id: string]: any;
 }
 
 export interface WhiteboardData {
@@ -59,17 +54,20 @@ export interface FileSystemNode {
   id: string;
   name: string;
   type: 'file' | 'folder';
-  children?: FileSystemNode[]; // Only for folders
-  content?: string; // Only for files, initially empty or storing simple text
+  children?: FileSystemNode[];
+  // Content specific to files
+  textContent?: string; 
+  whiteboardContent?: WhiteboardData | null;
+  content?: string; // Legacy or for simple text, can be phased out or used for non-editor files
 }
 
 export interface Project {
   id: string;
   name: string;
+  // Root level content for when no file is selected
   textContent: string;
   whiteboardContent: WhiteboardData | null;
-  fileSystemRoots: FileSystemNode[]; // Added for file explorer
+  fileSystemRoots: FileSystemNode[];
   createdAt: string; 
   updatedAt: string; 
 }
-

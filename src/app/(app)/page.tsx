@@ -1,26 +1,27 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
 import { ProjectCard } from "@/components/ProjectCard";
-import useLocalStorage from "@/hooks/use-local-storage";
 import type { Project } from "@/lib/types";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutDashboard, FolderOpen } from "lucide-react"; 
+import { Search, LayoutDashboard, FolderOpen, Loader2 } from "lucide-react"; 
+import { dbGetAllProjects, dbSaveProject, dbDeleteProject, dbSaveAllProjects } from "@/lib/indexedDB";
+import { useToast } from "@/hooks/use-toast";
 
 const initialProjects: Project[] = [
   {
     id: "1",
     name: "My First Project",
     textContent: "<p>This is the content of my first project's document.</p><p>You can <strong>bold</strong> text, make it <em>italic</em>, or create headings!</p><h1>Heading 1</h1><h2>Heading 2</h2><ul><li>Bullet list item 1</li><li>Bullet list item 2</li></ul><ol><li>Numbered list item 1</li><li>Numbered list item 2</li></ol>",
-    whiteboardContent: { elements: [], appState: { viewBackgroundColor: '#FFFFFF' } },
+    whiteboardContent: null, // Excalidraw handles its own default
     fileSystemRoots: [
       { id: 'folder-1', name: 'Documents', type: 'folder', children: [
-        { id: 'file-1-1', name: 'Meeting Notes.txt', type: 'file', content: 'Initial notes here.'},
+        { id: 'file-1-1', name: 'Meeting Notes.txt', type: 'file', content: 'Initial notes here.', textContent: '<p>Initial notes here.</p>', whiteboardContent: null },
       ]},
-      { id: 'file-2', name: 'Readme.md', type: 'file', content: '# Project Readme'}
+      { id: 'file-2', name: 'Readme.md', type: 'file', content: '# Project Readme', textContent: '<h1>Project Readme</h1>', whiteboardContent: null }
     ],
     createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date().toISOString(),
@@ -29,30 +30,83 @@ const initialProjects: Project[] = [
 
 
 export default function DashboardPage() {
-  const [projects, setProjects] = useLocalStorage<Project[]>("collabcanvas-projects", initialProjects);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [projectToShare, setProjectToShare] = useState<Project | null>(null);
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     setMounted(true);
-    // Ensure all projects have fileSystemRoots initialized if they don't from older data
-    setProjects(prevProjects => 
-      prevProjects.map(p => ({
-        ...p,
-        fileSystemRoots: p.fileSystemRoots || []
-      }))
-    );
-  }, []);
+    async function loadProjects() {
+      setIsLoading(true);
+      try {
+        let dbProjects = await dbGetAllProjects();
+        if (dbProjects.length === 0 && initialProjects.length > 0) {
+          await dbSaveAllProjects(initialProjects.map(p => ({
+            ...p,
+            fileSystemRoots: p.fileSystemRoots?.map(r => ({
+              ...r,
+              ...(r.type === 'file' ? { textContent: r.textContent || '<p></p>', whiteboardContent: r.whiteboardContent || null } : {})
+            })) || []
+          })));
+          dbProjects = initialProjects;
+        }
+        const projectsWithRoots = dbProjects.map(p => ({
+          ...p,
+          fileSystemRoots: p.fileSystemRoots?.map(r => ({ // Ensure file nodes have content
+             ...r,
+              ...(r.type === 'file' ? { textContent: r.textContent || '<p></p>', whiteboardContent: r.whiteboardContent || null } : {})
+          })) || []
+        }));
+        setProjects(projectsWithRoots);
+      } catch (error) {
+        console.error("Failed to load projects from DB", error);
+        toast({ title: "Error", description: `Could not load projects: ${(error as Error).message}`, variant: "destructive" });
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    if (typeof window !== 'undefined') { // Ensure IndexedDB is available
+        loadProjects();
+    } else {
+        setIsLoading(false); // Not in browser, stop loading
+    }
+  }, [toast]);
 
-  const handleCreateProject = (newProject: Project) => {
-    setProjects((prevProjects) => [...prevProjects, newProject]);
-  };
+  const handleCreateProject = useCallback(async (newProjectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => {
+    const newProject: Project = {
+      ...newProjectData,
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      fileSystemRoots: [], // Ensure this is initialized
+      textContent: newProjectData.textContent || "<p></p>",
+      whiteboardContent: newProjectData.whiteboardContent || null,
+    };
+    try {
+      await dbSaveProject(newProject);
+      setProjects((prevProjects) => [...prevProjects, newProject]);
+      toast({ title: "Project Created", description: `"${newProject.name}" has been created.`});
+    } catch (error) {
+      console.error("Failed to create project in DB", error);
+      toast({ title: "Error", description: "Could not create project.", variant: "destructive" });
+    }
+  }, [toast]);
 
-  const handleDeleteProject = (projectId: string) => {
-    setProjects((prevProjects) => prevProjects.filter((p) => p.id !== projectId));
-  };
+  const handleDeleteProject = useCallback(async (projectId: string) => {
+    const projectToDelete = projects.find(p => p.id === projectId);
+    try {
+      await dbDeleteProject(projectId);
+      setProjects((prevProjects) => prevProjects.filter((p) => p.id !== projectId));
+      toast({ title: "Project Deleted", description: `"${projectToDelete?.name || 'Project'}" has been deleted.`});
+    } catch (error) {
+      console.error("Failed to delete project from DB", error);
+      toast({ title: "Error", description: "Could not delete project.", variant: "destructive" });
+    }
+  }, [projects, toast]);
 
   const handleShareProject = (project: Project) => {
     setProjectToShare(project);
@@ -63,14 +117,16 @@ export default function DashboardPage() {
     project.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (!mounted) {
-    // To avoid hydration mismatch with localStorage
+  if (!mounted || isLoading) {
     return (
       <div className="container mx-auto p-4 sm:p-6 lg:p-8">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">My Projects</h1>
         </div>
-        <p>Loading projects...</p>
+        <div className="flex items-center justify-center py-10">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="ml-2">Loading projects...</p>
+        </div>
       </div>
     );
   }
@@ -90,7 +146,7 @@ export default function DashboardPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <CreateProjectDialog onCreateProject={handleCreateProject} />
+          <CreateProjectDialog onCreateProject={(newProjectData) => handleCreateProject(newProjectData as Omit<Project, 'id' | 'createdAt' | 'updatedAt'>)} />
         </div>
       </div>
 
@@ -113,7 +169,7 @@ export default function DashboardPage() {
             {searchTerm ? "Try a different search term or " : "Get started by "}
              creating a new project.
           </p>
-           {!searchTerm && <CreateProjectDialog onCreateProject={handleCreateProject} />}
+           {!searchTerm && <CreateProjectDialog onCreateProject={(newProjectData) => handleCreateProject(newProjectData as Omit<Project, 'id' | 'createdAt' | 'updatedAt'>)} />}
         </div>
       )}
       {projectToShare && (
@@ -126,4 +182,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

@@ -5,17 +5,25 @@ import { useState, useCallback } from "react";
 import type { FileSystemNode } from "@/lib/types";
 import { FileNodeItem } from "./FileNodeItem";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useToast } from "@/hooks/use-toast";
+// Removed: useToast, Add File/Folder buttons as they are now in global navbar
 
 interface FileExplorerProps {
   nodes: FileSystemNode[];
-  onNodeSelect?: (node: FileSystemNode | null) => void; 
+  onNodeSelect?: (node: FileSystemNode | null) => void;
+  onDeleteNode: (nodeId: string) => void; // To request deletion
+  onAddFileToFolder: (folderId: string | null) => void; // New prop
+  onAddFolderToFolder: (folderId: string | null) => void; // New prop
 }
 
-export function FileExplorer({ nodes, onNodeSelect }: FileExplorerProps) {
+export function FileExplorer({ 
+    nodes, 
+    onNodeSelect, 
+    onDeleteNode,
+    onAddFileToFolder,
+    onAddFolderToFolder 
+}: FileExplorerProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
-  const { toast } = useToast();
 
   const handleToggleExpand = useCallback((nodeId: string) => {
     setExpandedFolders((prev) => {
@@ -34,7 +42,6 @@ export function FileExplorer({ nodes, onNodeSelect }: FileExplorerProps) {
     if (onNodeSelect) {
       onNodeSelect(node);
     }
-    // Removed toast from here, parent page will handle feedback if needed
   }, [onNodeSelect]);
 
   const renderNodes = (nodesToRender: FileSystemNode[], level: number) => {
@@ -47,12 +54,16 @@ export function FileExplorer({ nodes, onNodeSelect }: FileExplorerProps) {
         onNodeClick={handleNodeClick}
         expandedFoldersInExplorer={expandedFolders}
         selectedNodeIdInExplorer={selectedNodeId}
+        onDeleteNode={onDeleteNode} // Pass down delete handler
+        onAddFileToFolder={onAddFileToFolder} // Pass down add file handler
+        onAddFolderToFolder={onAddFolderToFolder} // Pass down add folder handler
       />
     ));
   };
 
   return (
     <div className="h-full w-full flex flex-col bg-card text-card-foreground rounded-lg border shadow-sm p-2">
+      {/* "New File/Folder" buttons removed from here, handled by global navbar + ProjectContext */}
       <ScrollArea className="flex-grow">
         <div className="space-y-0.5">
           {nodes.length > 0 ? (

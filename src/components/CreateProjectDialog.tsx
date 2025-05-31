@@ -18,7 +18,8 @@ import { PlusCircle } from "lucide-react";
 import type { Project } from "@/lib/types";
 
 interface CreateProjectDialogProps {
-  onCreateProject: (newProject: Project) => void;
+  // Pass only the data needed to create a project, ID and timestamps will be generated
+  onCreateProject: (newProjectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'fileSystemRoots'> & { textContent?: string, whiteboardContent?: WhiteboardData | null }) => void;
 }
 
 export function CreateProjectDialog({ onCreateProject }: CreateProjectDialogProps) {
@@ -32,16 +33,13 @@ export function CreateProjectDialog({ onCreateProject }: CreateProjectDialogProp
       return;
     }
     setError("");
-    const newProject: Project = {
-      id: crypto.randomUUID(),
+    // We pass a partial project object, the full object with ID and timestamps is created in DashboardPage
+    const newProjectData = {
       name: projectName.trim(),
-      textContent: "<p></p>", // Initialize with an empty paragraph for TipTap
-      whiteboardContent: null, // Initialize with null to let Excalidraw use its defaults
-      fileSystemRoots: [], // Initialize empty file system
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      textContent: "<p></p>", 
+      whiteboardContent: null,
     };
-    onCreateProject(newProject);
+    onCreateProject(newProjectData);
     setProjectName("");
     setIsOpen(false);
   };
@@ -83,4 +81,3 @@ export function CreateProjectDialog({ onCreateProject }: CreateProjectDialogProp
     </Dialog>
   );
 }
-
