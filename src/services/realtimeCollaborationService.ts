@@ -50,13 +50,16 @@ export async function saveProjectData(project: Project): Promise<void> {
  * Simulates subscribing to real-time updates for a project.
  * @param projectId The ID of the project to listen to.
  * @param onUpdateCallback A callback function to execute when the project is updated.
- * @returns An unsubscribe function.
+ * @returns A Promise that resolves to an unsubscribe function.
  */
-export function subscribeToProjectUpdates(
+export async function subscribeToProjectUpdates(
   projectId: string,
   onUpdateCallback: (updatedProject: Project) => void
-): () => void {
+): Promise<() => void> {
   console.log(`[RealtimeService] Subscribing to updates for project: ${projectId}`);
+  // Simulate async operation if needed
+  await new Promise(resolve => setTimeout(resolve, 10)); 
+  
   if (!projectUpdateListeners[projectId]) {
     projectUpdateListeners[projectId] = [];
   }
@@ -74,17 +77,14 @@ export function subscribeToProjectUpdates(
   };
 }
 
-// Note: For a more complex application, you might manage individual unsubscribe calls
-// or have a more sophisticated listener management system.
-// The `unsubscribeFromProjectUpdates` function below is an alternative way
-// to clear all listeners for a specific project, if needed.
-
 /**
  * Simulates unsubscribing from all updates for a specific project.
  * This is a more general cleanup than the specific unsubscribe returned by subscribeToProjectUpdates.
  * @param projectId The ID of the project.
  */
-export function unsubscribeFromAllProjectUpdates(projectId: string): void {
+export async function unsubscribeFromAllProjectUpdates(projectId: string): Promise<void> {
   console.log(`[RealtimeService] Unsubscribing from ALL updates for project: ${projectId}`);
+  // Simulate async operation if needed
+  await new Promise(resolve => setTimeout(resolve, 10)); 
   delete projectUpdateListeners[projectId];
 }

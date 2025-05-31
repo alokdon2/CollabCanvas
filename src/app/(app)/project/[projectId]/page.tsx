@@ -231,24 +231,19 @@ export default function ProjectPage() {
     setProjectRootWhiteboardData(rootBoard);
     setActiveFileSystemRoots(ensuredFileSystemRoots);
 
-    // Determine active content based on current selectedFileNodeId
-    if (selectedFileNodeId) {
-        const selectedNode = findNodeByIdRecursive(ensuredFileSystemRoots, selectedFileNodeId);
-        if (selectedNode) {
-            setActiveTextContent(selectedNode.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
-            const newBoardData = selectedNode.whiteboardContent ? {...selectedNode.whiteboardContent} : {...DEFAULT_EMPTY_WHITEBOARD_DATA};
-            setActiveWhiteboardData(newBoardData);
-            activeWhiteboardDataRef.current = newBoardData;
-        } else { // Selected node not found (e.g. deleted), fall back to root
-            setSelectedFileNodeId(null);
-            setActiveTextContent(rootText);
-            setActiveWhiteboardData({...rootBoard});
-            activeWhiteboardDataRef.current = {...rootBoard};
-        }
-    } else { // No node selected, use root content
-        setActiveTextContent(rootText);
-        setActiveWhiteboardData({...rootBoard});
-        activeWhiteboardDataRef.current = {...rootBoard};
+    const currentSelectedNodeId = selectedFileNodeId; // Use state before it's potentially changed by folder logic
+    const nodeToLoad = currentSelectedNodeId ? findNodeByIdRecursive(ensuredFileSystemRoots, currentSelectedNodeId) : null;
+
+    if (nodeToLoad) {
+      setActiveTextContent(nodeToLoad.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
+      const newBoardData = nodeToLoad.whiteboardContent ? {...nodeToLoad.whiteboardContent} : {...DEFAULT_EMPTY_WHITEBOARD_DATA};
+      setActiveWhiteboardData(newBoardData);
+      activeWhiteboardDataRef.current = newBoardData;
+    } else { // No node selected or node not found, fall back to root (or if previously a folder was 'selected' for root view)
+      setSelectedFileNodeId(null); // Ensure if node was deleted, we reset selection
+      setActiveTextContent(rootText);
+      setActiveWhiteboardData({...rootBoard});
+      activeWhiteboardDataRef.current = {...rootBoard};
     }
   }, [setCurrentProjectName, selectedFileNodeId]);
 
@@ -261,12 +256,10 @@ export default function ProjectPage() {
       if (!projectId) return;
       setIsLoadingProject(true);
       try {
-        // 1. Try loading from real-time service first
         let projectData = await realtimeLoadProjectData(projectId);
         let source = "Realtime";
 
         if (!projectData) {
-          // 2. Fallback to IndexedDB
           projectData = await dbGetProjectById(projectId);
           source = "IndexedDB";
         }
@@ -275,21 +268,21 @@ export default function ProjectPage() {
           console.log(`Project loaded from ${source}`);
           updateLocalStateFromProject(projectData);
 
-          // 3. Subscribe to real-time updates
-          unsubscribeRealtime = realtimeSubscribeToProjectUpdates(projectId, (updatedProject) => {
+          const unsubFn = await realtimeSubscribeToProjectUpdates(projectId, (updatedProject) => {
             console.log("[Realtime] Received project update from subscription:", updatedProject.name, updatedProject.updatedAt);
-            // Avoid overwriting if a save is in progress or if incoming data is older
             if (isSavingRef.current) {
                 console.log("[Realtime] Save in progress, skipping update from subscription for now.");
                 return;
             }
-            if (currentProject && new Date(updatedProject.updatedAt) < new Date(currentProject.updatedAt)) {
+            const currentProjectSnapshot = currentProject; // Capture currentProject at the time of update
+            if (currentProjectSnapshot && new Date(updatedProject.updatedAt) < new Date(currentProjectSnapshot.updatedAt)) {
                 console.log("[Realtime] Incoming update is older than current state, skipping.");
                 return;
             }
             toast({ title: "Project Updated", description: "Changes received from collaborators.", duration: 2000 });
             updateLocalStateFromProject(updatedProject);
           });
+          unsubscribeRealtime = unsubFn;
 
         } else {
           toast({ title: "Error", description: "Project not found.", variant: "destructive" });
@@ -306,10 +299,16 @@ export default function ProjectPage() {
     fetchAndInitializeProject();
     
     if (typeof registerTriggerNewFile === 'function') {
-        registerTriggerNewFile(() => handleOpenNewItemDialog('file', null));
+        registerTriggerNewFile(() => {
+            const parentId = selectedFileNodeId && findNodeByIdRecursive(activeFileSystemRoots, selectedFileNodeId)?.type === 'folder' ? selectedFileNodeId : null;
+            handleOpenNewItemDialog('file', parentId);
+        });
     }
     if (typeof registerTriggerNewFolder === 'function') {
-        registerTriggerNewFolder(() => handleOpenNewItemDialog('folder', null));
+        registerTriggerNewFolder(() => {
+             const parentId = selectedFileNodeId && findNodeByIdRecursive(activeFileSystemRoots, selectedFileNodeId)?.type === 'folder' ? selectedFileNodeId : null;
+            handleOpenNewItemDialog('folder', parentId);
+        });
     }
 
     return () => {
@@ -318,11 +317,16 @@ export default function ProjectPage() {
       if (unsubscribeRealtime) {
         unsubscribeRealtime();
       } else {
-        // Fallback if subscription was somehow not set but projectId exists
-        realtimeUnsubscribeFromAllProjectUpdates(projectId);
+        (async () => {
+          try {
+            if(projectId) await realtimeUnsubscribeFromAllProjectUpdates(projectId);
+          } catch (e) {
+             console.error("Error unsubscribing from all project updates during cleanup:", e);
+          }
+        })();
       }
     };
-  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder, updateLocalStateFromProject, currentProject]); 
+  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder, updateLocalStateFromProject]); 
 
   useEffect(() => {
     activeWhiteboardDataRef.current = activeWhiteboardData;
@@ -333,16 +337,12 @@ export default function ProjectPage() {
     
     isSavingRef.current = true;
     try {
-      // Save to IndexedDB (local cache/offline)
       await dbSaveProject(projectToSave);
-      
-      // Save to Realtime Service (backend)
       await realtimeSaveProjectData(projectToSave);
 
       if (projectToSave.name !== currentProjectNameFromContext) {
         setCurrentProjectName(projectToSave.name);
       }
-      // Only show toast if not part of a rapid auto-save sequence cleared by another action
       if (!saveTimeoutRef.current) { 
           toast({ title: "Progress Saved", description: "Your changes have been saved locally and synced.", duration: 2000 });
       }
@@ -364,9 +364,9 @@ export default function ProjectPage() {
         createdAt: currentProject.createdAt,
         name: editingProjectName || currentProject.name,
         fileSystemRoots: [...activeFileSystemRoots], 
-        textContent: projectRootTextContent, 
-        whiteboardContent: projectRootWhiteboardData, 
-        updatedAt: new Date().toISOString(), // Crucial for resolving potential conflicts
+        textContent: projectRootTextContent, // This should be the project's root text content
+        whiteboardContent: projectRootWhiteboardData, // This should be the project's root whiteboard data
+        updatedAt: new Date().toISOString(),
       };
     };
     
@@ -385,7 +385,7 @@ export default function ProjectPage() {
         await performSave(projectBeingSaved);
         toast({ title: "Auto-Saved", description: "Changes automatically saved.", duration: 2000});
       }
-    }, 2000); // Increased debounce time slightly
+    }, 2000); 
 
     return () => {
       if (saveTimeoutRef.current) {
@@ -406,7 +406,7 @@ export default function ProjectPage() {
       setActiveFileSystemRoots(prevRoots => 
         updateNodeInTreeRecursive(prevRoots, selectedFileNodeId, { textContent: newText })
       );
-    } else { 
+    } else { // Should not happen if folders also get selectedFileNodeId, but as fallback for root
       setProjectRootTextContent(newText); 
     }
   }, [selectedFileNodeId]); 
@@ -425,7 +425,7 @@ export default function ProjectPage() {
             setActiveFileSystemRoots(prevRoots => 
               updateNodeInTreeRecursive(prevRoots, selectedFileNodeId, { whiteboardContent: newData })
             );
-        } else { 
+        } else { // Should not happen if folders also get selectedFileNodeId
             setProjectRootWhiteboardData(newData); 
         }
     }
@@ -435,7 +435,8 @@ export default function ProjectPage() {
     if (isEditingName && currentProject) {
       const newName = editingProjectName.trim();
       if (newName && newName !== currentProject.name) {
-        const updatedProjectData = { 
+        // Construct the most current state of the project for saving the name change
+        const updatedProjectDataForNameChange = { 
             ...currentProject, 
             name: newName, 
             updatedAt: new Date().toISOString(),
@@ -444,18 +445,20 @@ export default function ProjectPage() {
             fileSystemRoots: activeFileSystemRoots,
         };
         try {
+          // Force save any pending data before processing the name change
           if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
             clearTimeout(saveTimeoutRef.current);
             saveTimeoutRef.current = null;
-            await performSave(pendingSaveDataRef.current.project);
+            await performSave(pendingSaveDataRef.current.project); // Save what was pending
             pendingSaveDataRef.current = null;
-          } else if (pendingSaveDataRef.current?.project) {
+          } else if (pendingSaveDataRef.current?.project && !saveTimeoutRef.current) {
+             // If there's pending data but no timeout (edge case, e.g., if timeout just fired), save it
              await performSave(pendingSaveDataRef.current.project);
              pendingSaveDataRef.current = null;
           }
           
-          await performSave(updatedProjectData); // This ensures name change is saved to realtime service
-          setCurrentProject(updatedProjectData); 
+          await performSave(updatedProjectDataForNameChange); 
+          setCurrentProject(updatedProjectDataForNameChange); 
           setCurrentProjectName(newName);    
           toast({title: "Project Renamed", description: `Project name updated to "${newName}".`});
         } catch (error) {
@@ -474,8 +477,6 @@ export default function ProjectPage() {
     if (!currentProject) return;
     try {
       await dbDeleteProject(currentProject.id);
-      // Potentially add a call to delete from realtime service here
-      // await realtimeDeleteProjectData(currentProject.id);
       toast({ title: "Project Deleted", description: `"${currentProject.name}" has been deleted.` });
       router.replace("/");
     } catch (error) {
@@ -519,33 +520,24 @@ export default function ProjectPage() {
 
   const handleNodeSelectedInExplorer = useCallback(async (selectedNode: FileSystemNode | null) => {
     if (isSavingRef.current) {
-        console.log("Save in progress, delaying node selection change.");
         toast({ title: "Saving...", description: "Please wait for current changes to save before switching items.", duration: 1500});
         return;
     }
 
+    // Force save current content before switching
     if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
       clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = null;
-      
-      let projectDataToForceSave: Project | null = null;
-      if(currentProject){
-          projectDataToForceSave = {
-            id: currentProject.id,
-            createdAt: currentProject.createdAt,
-            name: editingProjectName || currentProject.name,
-            fileSystemRoots: [...activeFileSystemRoots], 
-            textContent: projectRootTextContent, 
-            whiteboardContent: projectRootWhiteboardData,
-            updatedAt: new Date().toISOString(),
-          };
-      }
-      await performSave(projectDataToForceSave); 
+      saveTimeoutRef.current = null; // Nullify to prevent auto-save toast
+      await performSave(pendingSaveDataRef.current.project); 
       pendingSaveDataRef.current = null; 
+    } else if (pendingSaveDataRef.current?.project && !saveTimeoutRef.current) {
+      // If there's pending data but no timeout (e.g. very fast switch, or timeout just fired)
+      await performSave(pendingSaveDataRef.current.project);
+      pendingSaveDataRef.current = null;
     }
 
     const newSelectedNodeId = selectedNode ? selectedNode.id : null;
-    setSelectedFileNodeId(newSelectedNodeId);
+    setSelectedFileNodeId(newSelectedNodeId); // This will always be set now, for files or folders
 
     if (selectedNode) { 
         setActiveTextContent(selectedNode.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
@@ -553,14 +545,15 @@ export default function ProjectPage() {
         setActiveWhiteboardData(newBoardData);
         activeWhiteboardDataRef.current = newBoardData; 
     } else { 
+        // This case implies the project root is selected (e.g., by deselecting all)
         setActiveTextContent(projectRootTextContent);
         setActiveWhiteboardData({...projectRootWhiteboardData});
         activeWhiteboardDataRef.current = {...projectRootWhiteboardData};
     }
   }, [
     performSave, 
-    projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots,
-    currentProject, editingProjectName, toast // Added toast
+    projectRootTextContent, projectRootWhiteboardData, 
+    toast, 
   ]);
 
 
@@ -571,19 +564,14 @@ export default function ProjectPage() {
   const confirmDeleteNode = useCallback(async () => {
     if (!nodeToDeleteId || !currentProject || isSavingRef.current) return;
 
+    // Force save current content before deleting
     if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
       clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = null;
-       const projectDataToForceSave = {
-            id: currentProject.id,
-            createdAt: currentProject.createdAt,
-            name: editingProjectName || currentProject.name,
-            fileSystemRoots: [...activeFileSystemRoots],
-            textContent: projectRootTextContent,
-            whiteboardContent: projectRootWhiteboardData,
-            updatedAt: new Date().toISOString(),
-        };
-      await performSave(projectDataToForceSave);
+      saveTimeoutRef.current = null; // Nullify to prevent auto-save toast
+      await performSave(pendingSaveDataRef.current.project);
+      pendingSaveDataRef.current = null;
+    } else if (pendingSaveDataRef.current?.project && !saveTimeoutRef.current) {
+      await performSave(pendingSaveDataRef.current.project);
       pendingSaveDataRef.current = null;
     }
 
@@ -591,6 +579,7 @@ export default function ProjectPage() {
     const newRoots = deleteNodeFromTreeRecursive(activeFileSystemRoots, nodeToDeleteId);
     setActiveFileSystemRoots(newRoots); 
 
+    // If the deleted node was selected, revert to project root view
     if (selectedFileNodeId === nodeToDeleteId) {
         setSelectedFileNodeId(null); 
         setActiveTextContent(projectRootTextContent);
@@ -601,7 +590,7 @@ export default function ProjectPage() {
     setNodeToDeleteId(null); 
   }, [
     nodeToDeleteId, selectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, 
-    activeFileSystemRoots, performSave, currentProject, editingProjectName, toast,
+    activeFileSystemRoots, performSave, currentProject, toast,
   ]);
 
 
@@ -860,7 +849,9 @@ export default function ProjectPage() {
               Enter a name for your new {newItemType}.
               {parentIdForNewItem ? 
                 ` It will be created in the folder "${findNodeByIdRecursive(activeFileSystemRoots, parentIdForNewItem)?.name || 'selected folder'}".` :
-                " It will be created at the root of the project."
+                 selectedFileNodeId && findNodeByIdRecursive(activeFileSystemRoots, selectedFileNodeId)?.type === 'folder' ?
+                 ` It will be created in the folder "${findNodeByIdRecursive(activeFileSystemRoots, selectedFileNodeId)?.name}".` :
+                 " It will be created at the root of the project."
               }
             </DialogDescription>
           </DialogHeader>
