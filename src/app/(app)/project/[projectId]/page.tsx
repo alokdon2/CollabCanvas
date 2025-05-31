@@ -186,7 +186,7 @@ export default function ProjectPage() {
   const [mounted, setMounted] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("both");
   const [isExplorerVisible, setIsExplorerVisible] = useState(true);
-  const [selectedFileNodeId, setSelectedFileNodeId] = useState<string | null>(null);
+  const [selectedFileNodeId, setSelectedFileNodeId] = useState<string | null>(null); // ID of the *file* being edited, or null if root/folder
 
   const [isNewItemDialogOpen, setIsNewItemDialogOpen] = useState(false);
   const [newItemType, setNewItemType] = useState<'file' | 'folder' | null>(null);
@@ -217,10 +217,10 @@ export default function ProjectPage() {
           setProjectRootWhiteboardData(rootBoard);
           
           setActiveTextContent(rootText); 
-          setActiveWhiteboardData({...rootBoard}); // Ensure new object reference
-          activeWhiteboardDataRef.current = {...rootBoard}; // Keep ref in sync
+          setActiveWhiteboardData({...rootBoard}); 
+          activeWhiteboardDataRef.current = {...rootBoard}; 
           setActiveFileSystemRoots(projectData.fileSystemRoots || []);
-          setSelectedFileNodeId(null); 
+          setSelectedFileNodeId(null); // Initially, project root is active
         } else {
           toast({ title: "Error", description: "Project not found.", variant: "destructive" });
           router.replace("/");
@@ -259,7 +259,11 @@ export default function ProjectPage() {
       if (projectToSave.name !== currentProjectNameFromContext) {
         setCurrentProjectName(projectToSave.name);
       }
-      toast({ title: "Progress Saved", description: "Your changes have been saved.", duration: 2000 });
+      // Only show save toast if it's not part of an immediate switch or delete operation
+      // This reduces toast spam. A more sophisticated approach might be needed if fine-grained toast control is desired.
+      if (!saveTimeoutRef.current) { 
+          toast({ title: "Progress Saved", description: "Your changes have been saved.", duration: 2000 });
+      }
     } catch (error) {
       console.error("Failed to save project:", error);
       toast({ title: "Save Error", description: `Could not save project: ${(error as Error).message}`, variant: "destructive" });
@@ -291,20 +295,26 @@ export default function ProjectPage() {
 
     saveTimeoutRef.current = setTimeout(async () => {
       if (pendingSaveDataRef.current?.project) {
-        await performSave(pendingSaveDataRef.current.project);
+        const projectBeingSaved = pendingSaveDataRef.current.project;
+        pendingSaveDataRef.current = null; // Clear before async operation
+        saveTimeoutRef.current = null; // Clear ref before async
+        await performSave(projectBeingSaved);
+        toast({ title: "Auto-Saved", description: "Changes automatically saved.", duration: 2000});
+
       }
     }, 1500);
 
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
+        saveTimeoutRef.current = null;
       }
     };
   }, [
     projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots, 
     editingProjectName, 
     mounted, isLoadingProject, currentProject, 
-    performSave
+    performSave, toast // Added toast
   ]);
 
   const handleTextChange = useCallback((newText: string) => {
@@ -313,10 +323,10 @@ export default function ProjectPage() {
       setActiveFileSystemRoots(prevRoots => 
         updateNodeInTreeRecursive(prevRoots, selectedFileNodeId, { textContent: newText })
       );
-    } else {
+    } else { // Editing project root's text content
       setProjectRootTextContent(newText); 
     }
-  }, [selectedFileNodeId, setActiveFileSystemRoots, setProjectRootTextContent]); 
+  }, [selectedFileNodeId]); 
   
   const handleWhiteboardChange = useCallback((newData: WhiteboardData) => {
     const oldElementsString = JSON.stringify(activeWhiteboardDataRef.current?.elements || []);
@@ -332,11 +342,11 @@ export default function ProjectPage() {
             setActiveFileSystemRoots(prevRoots => 
               updateNodeInTreeRecursive(prevRoots, selectedFileNodeId, { whiteboardContent: newData })
             );
-        } else {
+        } else { // Editing project root's whiteboard content
             setProjectRootWhiteboardData(newData); 
         }
     }
-  }, [selectedFileNodeId, setActiveFileSystemRoots, setProjectRootWhiteboardData]); 
+  }, [selectedFileNodeId]); 
   
   const handleNameEditToggle = useCallback(async () => {
     if (isEditingName && currentProject) {
@@ -351,6 +361,17 @@ export default function ProjectPage() {
             fileSystemRoots: activeFileSystemRoots,
         };
         try {
+          // Force save before renaming
+          if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
+            clearTimeout(saveTimeoutRef.current);
+            saveTimeoutRef.current = null;
+            await performSave(pendingSaveDataRef.current.project);
+            pendingSaveDataRef.current = null;
+          } else if (pendingSaveDataRef.current?.project) { // Save if data exists but no timeout (e.g. immediate pending)
+             await performSave(pendingSaveDataRef.current.project);
+             pendingSaveDataRef.current = null;
+          }
+          
           await dbSaveProject(updatedProjectData); 
           setCurrentProject(updatedProjectData); 
           setCurrentProjectName(newName);    
@@ -409,7 +430,7 @@ export default function ProjectPage() {
     toast({ title: `${newItemType === 'file' ? 'File' : 'Folder'} Created`, description: `"${newNode.name}" added.`});
     setIsNewItemDialogOpen(false);
     setNewItemType(null);
-  }, [newItemName, newItemType, parentIdForNewItem, toast, setActiveFileSystemRoots]);
+  }, [newItemName, newItemType, parentIdForNewItem, toast]);
   
 
   const handleNodeSelectedInExplorer = useCallback(async (selectedNode: FileSystemNode | null) => {
@@ -418,39 +439,40 @@ export default function ProjectPage() {
       saveTimeoutRef.current = null;
       
       let projectDataToForceSave: Project | null = null;
-      if(currentProject){
+      if(currentProject){ // Ensure currentProject is defined
           projectDataToForceSave = {
             id: currentProject.id,
             createdAt: currentProject.createdAt,
-            name: editingProjectName || currentProject.name,
+            name: editingProjectName || currentProject.name, // Use current editing name
             fileSystemRoots: [...activeFileSystemRoots], 
-            textContent: projectRootTextContent,
-            whiteboardContent: projectRootWhiteboardData,
+            textContent: projectRootTextContent, // Use current root text
+            whiteboardContent: projectRootWhiteboardData, // Use current root board
             updatedAt: new Date().toISOString(),
           };
       }
-      await performSave(projectDataToForceSave);
+      await performSave(projectDataToForceSave); // Pass the constructed data
       pendingSaveDataRef.current = null; 
     }
 
-    const nodeId = selectedNode ? selectedNode.id : null;
-    setSelectedFileNodeId(nodeId);
+    const isFile = selectedNode && selectedNode.type === 'file';
+    const newSelectedFileNodeId = isFile ? selectedNode.id : null;
+    setSelectedFileNodeId(newSelectedFileNodeId);
 
-    if (selectedNode && selectedNode.type === 'file') {
+    if (isFile && selectedNode) { // selectedNode will be defined if isFile is true
         setActiveTextContent(selectedNode.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
         const newBoardData = selectedNode.whiteboardContent ? {...selectedNode.whiteboardContent} : {...DEFAULT_EMPTY_WHITEBOARD_DATA};
         setActiveWhiteboardData(newBoardData);
-        activeWhiteboardDataRef.current = newBoardData;
-    } else { 
+        activeWhiteboardDataRef.current = newBoardData; // Keep ref in sync
+    } else { // A folder is selected or no node is selected (root)
         setActiveTextContent(projectRootTextContent);
-        setActiveWhiteboardData({...projectRootWhiteboardData});
-        activeWhiteboardDataRef.current = {...projectRootWhiteboardData};
+        setActiveWhiteboardData({...projectRootWhiteboardData}); // Ensure new object reference
+        activeWhiteboardDataRef.current = {...projectRootWhiteboardData}; // Keep ref in sync
     }
   }, [
     performSave, 
     projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots,
-    currentProject, editingProjectName,
-    setActiveTextContent, setActiveWhiteboardData, setSelectedFileNodeId
+    currentProject, editingProjectName, // Include all relevant states that construct the project data
+    // setActiveTextContent, setActiveWhiteboardData, setSelectedFileNodeId are stable setters
   ]);
 
 
@@ -481,6 +503,7 @@ export default function ProjectPage() {
     const newRoots = deleteNodeFromTreeRecursive(activeFileSystemRoots, nodeToDeleteId);
     setActiveFileSystemRoots(newRoots); 
 
+    // If the deleted node was the one whose content was being shown, revert to project root content
     if (selectedFileNodeId === nodeToDeleteId) {
         setSelectedFileNodeId(null); 
         setActiveTextContent(projectRootTextContent);
@@ -492,7 +515,6 @@ export default function ProjectPage() {
   }, [
     nodeToDeleteId, selectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, 
     activeFileSystemRoots, performSave, currentProject, editingProjectName, toast,
-    setActiveTextContent, setActiveWhiteboardData, setSelectedFileNodeId, setActiveFileSystemRoots
   ]);
 
 
@@ -519,25 +541,26 @@ export default function ProjectPage() {
         return prevRoots;
       }
 
+      // Prevent dragging a folder into its own child
       if (targetFolderId && removedNode.type === 'folder') {
         let currentParentId: string | null = targetFolderId;
+        const findParentRecursive = (nodes: FileSystemNode[], id: string): FileSystemNode | null => {
+            for(const n of nodes) {
+                if (n.children?.some(child => child.id === id)) return n;
+                if (n.children) {
+                    const parent = findParentRecursive(n.children, id);
+                    if (parent) return parent;
+                }
+            }
+            return null;
+        }
+        
         while(currentParentId) {
             if (currentParentId === draggedNodeId) {
                 toast({ title: "Invalid Move", description: "Cannot move a folder into one of its own subfolders.", variant: "destructive" });
-                return prevRoots;
+                return prevRoots; // Return original roots to prevent the invalid move
             }
-            let foundParentOfTarget: FileSystemNode | null = null;
-            const findParent = (nodes: FileSystemNode[], id: string, parent: FileSystemNode | null): FileSystemNode | null => {
-                for (const n of nodes) {
-                    if (n.id === id) return parent;
-                    if (n.children) {
-                        const p = findParent(n.children, id, n);
-                        if (p) return p;
-                    }
-                }
-                return null;
-            }
-            const parentOfCurrentTarget = findParent(prevRoots, currentParentId, null);
+            const parentOfCurrentTarget = findParentRecursive(prevRoots, currentParentId); // Search in original unfiltered roots
             currentParentId = parentOfCurrentTarget ? parentOfCurrentTarget.id : null;
         }
       }
@@ -547,7 +570,7 @@ export default function ProjectPage() {
       toast({ title: "Item Moved", description: `"${removedNode.name}" moved.` });
       return newRootsWithMovedNode;
     });
-  }, [toast, setActiveFileSystemRoots]);
+  }, [toast]);
 
 
   if (!mounted || isLoadingProject || !currentProject) {
@@ -681,7 +704,7 @@ export default function ProjectPage() {
                     onDeleteNode={handleDeleteNodeRequest} 
                     onAddFileToFolder={onAddFileToFolderCallback}
                     onAddFolderToFolder={onAddFolderToFolderCallback}
-                    selectedNodeId={selectedFileNodeId}
+                    selectedNodeId={selectedFileNodeId} // Pass the ID of the active file, or null
                     onMoveNode={handleMoveNode}
                   />
                 </div>
@@ -795,5 +818,3 @@ export default function ProjectPage() {
     </div>
   );
 }
-
-    
