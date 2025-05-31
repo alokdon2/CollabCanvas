@@ -50,25 +50,46 @@ const WhiteboardComponent = ({
   const [isClient, setIsClient] = useState(false);
   const { theme: appTheme } = useTheme();
 
+  const [sanitizedInitialData, setSanitizedInitialData] = useState<WhiteboardData>(
+    initialData || DEFAULT_EMPTY_WHITEBOARD_DATA
+  );
+
   useEffect(() => {
     setIsClient(true);
   }, []);
 
   useEffect(() => {
+    const baseData = initialData || DEFAULT_EMPTY_WHITEBOARD_DATA;
+    // Create a mutable copy of appState or an empty object if appState is undefined
+    let currentAppState = baseData.appState ? { ...baseData.appState } : {};
+
+    // Sanitize collaborators: if it's a property on appState...
+    if (currentAppState.hasOwnProperty('collaborators')) {
+      // ...and it's null, or it's an object but not a Map instance (e.g., {} from JSON)
+      if (currentAppState.collaborators === null ||
+          (typeof currentAppState.collaborators === 'object' && !(currentAppState.collaborators instanceof Map))) {
+        // Reset it to a new Map(). Excalidraw expects a Map or undefined.
+        currentAppState.collaborators = new Map();
+      }
+    }
+    // If 'collaborators' is not a property on currentAppState, it remains undefined, which is fine.
+
+    setSanitizedInitialData({
+      ...baseData,
+      appState: currentAppState,
+    });
+  }, [initialData]); // Re-sanitize when initialData changes
+
+
+  useEffect(() => {
     const api = excalidrawAPIRef.current;
     if (api) {
-      // Handle isReadOnly changes directly affecting viewModeEnabled.
-      // The `viewModeEnabled` prop passed to DynamicallyLoadedExcalidraw should handle this,
-      // but this imperative update can serve as a safeguard or handle cases where
-      // internal Excalidraw state might need to be overridden.
-      const currentAppState = api.getAppState();
-      if (currentAppState.viewModeEnabled !== isReadOnly) {
-        api.updateScene({ appState: { ...currentAppState, viewModeEnabled: isReadOnly } });
+      const currentInternalAppState = api.getAppState();
+      if (currentInternalAppState.viewModeEnabled !== isReadOnly) {
+        api.updateScene({ appState: { ...currentInternalAppState, viewModeEnabled: isReadOnly } });
       }
-      // The theme is handled declaratively by the `theme` prop on DynamicallyLoadedExcalidraw.
-      // No need to imperatively call api.setTheme here.
     }
-  }, [isReadOnly]); // appTheme removed from dependencies, theme is handled by prop
+  }, [isReadOnly]);
 
   const handleExcalidrawChange = useCallback(
     (
@@ -96,7 +117,7 @@ const WhiteboardComponent = ({
     <div className="h-full w-full rounded-lg border bg-card text-card-foreground shadow-sm excalidraw-wrapper">
       <DynamicallyLoadedExcalidraw
         excalidrawAPI={(api) => (excalidrawAPIRef.current = api)}
-        initialData={initialData || DEFAULT_EMPTY_WHITEBOARD_DATA} 
+        initialData={sanitizedInitialData} 
         onChange={handleExcalidrawChange}
         viewModeEnabled={isReadOnly} 
         uiOptions={{ canvasActions: { toggleMenu: false } }}
@@ -107,3 +128,4 @@ const WhiteboardComponent = ({
 };
 
 export const Whiteboard = memo(WhiteboardComponent);
+
