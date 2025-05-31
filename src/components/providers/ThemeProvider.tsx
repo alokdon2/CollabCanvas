@@ -1,8 +1,10 @@
+
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
-type Theme = "light" | "dark";
+// Ensure Theme type is exported or accessible if ThemeSwitcher imports it
+export type Theme = "light" | "dark" | "system"; // Added "system" as a possible value for the state
 
 interface ThemeProviderProps {
   children: ReactNode;
@@ -16,7 +18,7 @@ interface ThemeProviderState {
 }
 
 const initialState: ThemeProviderState = {
-  theme: "light",
+  theme: "system", // Default to system
   setTheme: () => null,
 };
 
@@ -24,7 +26,7 @@ const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 
 export function ThemeProvider({
   children,
-  defaultTheme = "light",
+  defaultTheme = "system", // Changed default to "system" to align with typical usage
   storageKey = "collabcanvas-theme",
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() => {
@@ -43,8 +45,16 @@ export function ThemeProvider({
   useEffect(() => {
     const root = window.document.documentElement;
     root.classList.remove("light", "dark");
-    root.classList.add(theme);
+
+    let effectiveTheme = theme;
+    if (theme === "system") {
+      effectiveTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    }
+    // Add the resolved theme class to the root element
+    root.classList.add(effectiveTheme); 
+    
     try {
+      // Save the user's preference (which could be "system", "light", or "dark")
       window.localStorage.setItem(storageKey, theme);
     } catch (e) {
       console.error("Error saving theme to localStorage", e);
