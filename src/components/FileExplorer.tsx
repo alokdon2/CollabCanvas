@@ -5,6 +5,7 @@ import { useState, useCallback } from "react";
 import type { FileSystemNode } from "@/lib/types";
 import { FileNodeItem } from "./FileNodeItem";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
 
 interface FileExplorerProps {
   nodes: FileSystemNode[];
@@ -13,7 +14,7 @@ interface FileExplorerProps {
   onAddFileToFolder: (folderId: string | null) => void; 
   onAddFolderToFolder: (folderId: string | null) => void;
   selectedNodeId: string | null; 
-  onMoveNode: (draggedNodeId: string, targetFolderId: string | null) => void; // New prop
+  onMoveNode: (draggedNodeId: string, targetFolderId: string | null) => void;
 }
 
 export function FileExplorer({ 
@@ -23,9 +24,10 @@ export function FileExplorer({
     onAddFileToFolder,
     onAddFolderToFolder,
     selectedNodeId,
-    onMoveNode, // New prop
+    onMoveNode, 
 }: FileExplorerProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+  const [isRootDragOver, setIsRootDragOver] = useState(false);
 
   const handleToggleExpand = useCallback((nodeId: string) => {
     setExpandedFolders((prev) => {
@@ -47,21 +49,40 @@ export function FileExplorer({
 
   const handleRootDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
-    // Check if the event target is the root div itself, not a child FileNodeItem
-    // This simple check might not be robust enough for complex nested elements.
-    if (event.target === event.currentTarget) { 
-      const draggedNodeId = event.dataTransfer.getData("application/node-id");
-      if (draggedNodeId) {
-        onMoveNode(draggedNodeId, null); // null targetFolderId for root
-      }
+    setIsRootDragOver(false); 
+    // If a child FileNodeItem (folder) handled the drop, it would have called event.stopPropagation().
+    // So, if the event reaches here, it's a drop on the root area.
+    const draggedNodeId = event.dataTransfer.getData("application/node-id");
+    if (draggedNodeId) {
+      onMoveNode(draggedNodeId, null); // null targetFolderId for root
     }
-    // Reset any global drag over styles if needed here
   };
 
   const handleRootDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault(); // Necessary to allow dropping
+    event.preventDefault(); 
     event.dataTransfer.dropEffect = "move";
-    // Add visual cue for root drop target if desired (e.g., change background of this div)
+    // Only set root drag over if not already over a specific child FileNodeItem that might have its own indicator.
+    // This can be tricky. For simplicity, we'll set it. FileNodeItem's onDragLeave might cause flicker.
+    if (event.dataTransfer.types.includes("application/node-id")) {
+        setIsRootDragOver(true);
+    }
+  };
+
+  const handleRootDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    // Check if the mouse is leaving the actual FileExplorer component bounds
+    if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+      setIsRootDragOver(false);
+    }
+    // If event.relatedTarget is a child FileNodeItem, FileNodeItem's onDragEnter/onDragOver will handle its own visuals.
+    // This simple check might still cause flickering if moving quickly between root and items.
+    // A more robust solution might involve checking event.target in onDragOver.
+    const targetIsFileNodeItem = (event.relatedTarget as HTMLElement)?.closest('[data-filenodeitem="true"]');
+    if (targetIsFileNodeItem) {
+        setIsRootDragOver(false);
+    } else if (!event.currentTarget.contains(event.relatedTarget as Node)){
+        setIsRootDragOver(false);
+    }
+
   };
 
   const renderNodes = (nodesToRender: FileSystemNode[], level: number) => {
@@ -77,16 +98,20 @@ export function FileExplorer({
         onDeleteNode={onDeleteNode}
         onAddFileToFolder={onAddFileToFolder}
         onAddFolderToFolder={onAddFolderToFolder}
-        onMoveNode={onMoveNode} // Pass down
+        onMoveNode={onMoveNode}
       />
     ));
   };
 
   return (
     <div 
-      className="h-full w-full flex flex-col bg-card text-card-foreground rounded-lg border shadow-sm p-2"
+      className={cn(
+        "h-full w-full flex flex-col bg-card text-card-foreground rounded-lg border shadow-sm p-2",
+        isRootDragOver && "bg-primary/10 ring-2 ring-primary" // Visual feedback for root drag over
+      )}
       onDrop={handleRootDrop}
       onDragOver={handleRootDragOver}
+      onDragLeave={handleRootDragLeave} // Added drag leave for root
     >
       <ScrollArea className="flex-grow">
         <div className="space-y-0.5">

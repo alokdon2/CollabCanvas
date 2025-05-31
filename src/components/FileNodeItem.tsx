@@ -78,32 +78,32 @@ export function FileNodeItem({
   const handleDragStart = (event: React.DragEvent<HTMLDivElement>) => {
     event.dataTransfer.setData("application/node-id", node.id);
     event.dataTransfer.effectAllowed = "move";
-    // Optional: Change opacity or style of dragged item
     // (event.target as HTMLElement).style.opacity = '0.5'; 
   };
 
-  // const handleDragEnd = (event: React.DragEvent<HTMLDivElement>) => {
-    // (event.target as HTMLElement).style.opacity = '1';
-  // };
-
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault(); 
+    event.stopPropagation(); // Prevent FileExplorer's root onDragOver while over an item
     event.dataTransfer.dropEffect = "move";
-    if (isFolder) { // Only folders can be drop targets for now
+    if (isFolder) { 
       setIsDragOver(true);
     }
   };
 
   const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
+    event.stopPropagation();
     if (isFolder) {
       setIsDragOver(true);
     }
   };
 
   const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
-     // Check if the relatedTarget (where the mouse is going) is outside this component
+    event.stopPropagation();
     const currentTarget = event.currentTarget as HTMLElement;
+    // Only set isDragOver to false if the mouse truly leaves this item
+    // and doesn't just enter one of its children (if it had draggable children)
+    // or a very near part of itself that might trigger a quick leave/enter.
     if (!currentTarget.contains(event.relatedTarget as Node)) {
         setIsDragOver(false);
     }
@@ -111,34 +111,31 @@ export function FileNodeItem({
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
-    event.stopPropagation(); // Prevent root drop handler in FileExplorer from firing
+    event.stopPropagation(); 
     setIsDragOver(false);
     const draggedNodeId = event.dataTransfer.getData("application/node-id");
 
     if (draggedNodeId && draggedNodeId !== node.id) {
       if (isFolder) {
-        onMoveNode(draggedNodeId, node.id); // Dropped onto this folder
+        onMoveNode(draggedNodeId, node.id); 
       }
-      // If not a folder, the drop effectively does nothing on this item.
-      // The FileExplorer's root drop handler would catch it if it wasn't stopped.
     }
   };
 
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col" data-filenodeitem="true"> {/* Added data-filenodeitem attribute */}
       <div
         draggable={true}
         onDragStart={handleDragStart}
-        // onDragEnd={handleDragEnd} // Optional for resetting style if changed onDragStart
         onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
-        onDrop={isFolder ? handleDrop : undefined} // Only folders are drop targets
+        onDrop={isFolder ? handleDrop : undefined} 
         className={cn(
           "flex items-center py-1.5 px-2 rounded-md cursor-pointer group hover:bg-accent",
           currentIsSelected && "bg-accent text-accent-foreground",
-          isDragOver && isFolder && "bg-primary/20 ring-1 ring-primary" // Visual feedback for drag over on folders
+          isDragOver && isFolder && "bg-primary/20 ring-2 ring-primary" 
         )}
         style={{ paddingLeft: `${level * 1.25 + 0.5}rem` }} 
         onClick={handleNodeClick}
