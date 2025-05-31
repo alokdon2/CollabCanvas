@@ -60,25 +60,20 @@ const WhiteboardComponent = ({
 
   useEffect(() => {
     const baseData = initialData || DEFAULT_EMPTY_WHITEBOARD_DATA;
-    // Create a mutable copy of appState or an empty object if appState is undefined
     let currentAppState = baseData.appState ? { ...baseData.appState } : {};
 
-    // Sanitize collaborators: if it's a property on appState...
     if (currentAppState.hasOwnProperty('collaborators')) {
-      // ...and it's null, or it's an object but not a Map instance (e.g., {} from JSON)
       if (currentAppState.collaborators === null ||
           (typeof currentAppState.collaborators === 'object' && !(currentAppState.collaborators instanceof Map))) {
-        // Reset it to a new Map(). Excalidraw expects a Map or undefined.
         currentAppState.collaborators = new Map();
       }
     }
-    // If 'collaborators' is not a property on currentAppState, it remains undefined, which is fine.
-
+    
     setSanitizedInitialData({
       ...baseData,
       appState: currentAppState,
     });
-  }, [initialData]); // Re-sanitize when initialData changes
+  }, [initialData]);
 
 
   useEffect(() => {
@@ -90,6 +85,29 @@ const WhiteboardComponent = ({
       }
     }
   }, [isReadOnly]);
+
+  // This useEffect ensures that if the initialData prop changes (e.g., from a remote update),
+  // the Excalidraw component updates its scene.
+  useEffect(() => {
+    const api = excalidrawAPIRef.current;
+    if (api && sanitizedInitialData) {
+      // Prepare the scene data, ensuring appState and files are not undefined if they are empty.
+      const sceneToUpdate: {
+        elements: readonly ExcalidrawElement[];
+        appState?: AppState;
+        files?: BinaryFiles;
+      } = {
+        elements: sanitizedInitialData.elements || [],
+      };
+      if (sanitizedInitialData.appState) {
+        sceneToUpdate.appState = sanitizedInitialData.appState;
+      }
+      if (sanitizedInitialData.files) {
+        sceneToUpdate.files = sanitizedInitialData.files;
+      }
+      api.updateScene(sceneToUpdate);
+    }
+  }, [sanitizedInitialData]); // This effect runs when sanitizedInitialData (derived from initialData prop) changes.
 
   const handleExcalidrawChange = useCallback(
     (
