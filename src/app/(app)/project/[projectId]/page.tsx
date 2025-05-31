@@ -259,7 +259,7 @@ export default function ProjectPage() {
       activeWhiteboardDataRef.current = {...rootBoard};
     }
     if (source === "realtimeUpdate") {
-        toast({ title: "Project Updated", description: "Changes received from collaborators.", duration: 2000 });
+        setTimeout(() => toast({ title: "Project Updated", description: "Changes received from collaborators.", duration: 2000 }), 0);
     }
 
   }, [setCurrentProjectName, selectedFileNodeId, toast]);
@@ -287,23 +287,27 @@ export default function ProjectPage() {
                 console.log("[ProjectPage Realtime] Save in progress, skipping update from subscription for now.");
                 return;
             }
-             // More robust check against local state (currentProject snapshot)
-            if (currentProject && new Date(updatedProject.updatedAt) <= new Date(currentProject.updatedAt)) {
-                console.log("[ProjectPage Realtime] Incoming update is older or same as current client state, skipping to prevent race condition.", updatedProject.updatedAt, "vs", currentProject.updatedAt);
-                return;
-            }
+            
+            // Use a local snapshot of currentProject for comparison
+            setCurrentProject(currentProj => {
+                if (currentProj && new Date(updatedProject.updatedAt) <= new Date(currentProj.updatedAt)) {
+                    console.log("[ProjectPage Realtime] Incoming update is older or same as current client state, skipping to prevent race condition.", updatedProject.updatedAt, "vs", currentProj.updatedAt);
+                    return currentProj; // Return current state, no update
+                }
+                updateLocalStateFromProject(updatedProject, "realtimeUpdate");
+                lastSavedToServerTimestampRef.current = updatedProject.updatedAt; // Update with timestamp from server
+                return updatedProject; // Return new state
+            });
 
-            updateLocalStateFromProject(updatedProject, "realtimeUpdate");
-            lastSavedToServerTimestampRef.current = updatedProject.updatedAt; // Update with timestamp from server
           });
 
         } else {
-          toast({ title: "Error", description: "Project not found.", variant: "destructive" });
+          setTimeout(() => toast({ title: "Error", description: "Project not found.", variant: "destructive" }), 0);
           router.replace("/");
         }
       } catch (error) {
         console.error("[ProjectPage] Failed to fetch project:", error);
-        toast({ title: "Error Loading Project", description: `Could not load project data: ${(error as Error).message}`, variant: "destructive" });
+        setTimeout(() => toast({ title: "Error Loading Project", description: `Could not load project data: ${(error as Error).message}`, variant: "destructive" }), 0);
         router.replace("/");
       } finally {
         setIsLoadingProject(false);
@@ -333,7 +337,7 @@ export default function ProjectPage() {
       }
     };
   }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder, updateLocalStateFromProject]);
-  // Added updateLocalStateFromProject to dependency array.
+
 
   useEffect(() => {
     activeWhiteboardDataRef.current = activeWhiteboardData;
@@ -347,19 +351,18 @@ export default function ProjectPage() {
     const finalProjectToSave = {...projectToSave, updatedAt: timestampForThisSave};
     
     try {
-      // await dbSaveProject(finalProjectToSave); // No longer saving to IndexedDB as primary
       await realtimeSaveProjectData(finalProjectToSave);
-      lastSavedToServerTimestampRef.current = timestampForThisSave; // Update with the timestamp we sent
+      lastSavedToServerTimestampRef.current = timestampForThisSave; 
 
       if (finalProjectToSave.name !== currentProjectNameFromContext) {
         setCurrentProjectName(finalProjectToSave.name);
       }
       if (!saveTimeoutRef.current) { 
-          toast({ title: "Progress Saved", description: "Your changes have been synced to the cloud.", duration: 2000 });
+          setTimeout(() => toast({ title: "Progress Saved", description: "Your changes have been synced to the cloud.", duration: 2000 }),0);
       }
     } catch (error) {
       console.error("[ProjectPage] Failed to save project to Firestore:", error);
-      toast({ title: "Save Error", description: `Could not save project: ${(error as Error).message}`, variant: "destructive" });
+      setTimeout(() => toast({ title: "Save Error", description: `Could not save project: ${(error as Error).message}`, variant: "destructive" }), 0);
     } finally {
       isSavingRef.current = false;
     }
@@ -380,7 +383,7 @@ export default function ProjectPage() {
         fileSystemRoots: [...activeFileSystemRoots], 
         textContent: projectRootTextContent, 
         whiteboardContent: projectRootWhiteboardData, 
-        updatedAt: currentLocalTimestamp, // This will be overwritten by performSave with its own timestamp
+        updatedAt: currentLocalTimestamp, 
       };
     };
     
@@ -397,7 +400,7 @@ export default function ProjectPage() {
         pendingSaveDataRef.current = null; 
         saveTimeoutRef.current = null; 
         await performSave(projectBeingSaved);
-        toast({ title: "Auto-Saved", description: "Changes automatically saved to cloud.", duration: 2000});
+        setTimeout(() => toast({ title: "Auto-Saved", description: "Changes automatically saved to cloud.", duration: 2000}), 0);
       }
     }, 2000); 
 
@@ -453,7 +456,6 @@ export default function ProjectPage() {
         const updatedProjectDataForNameChange = { 
             ...currentProject, 
             name: newName, 
-            // updatedAt will be set by performSave
             textContent: projectRootTextContent,
             whiteboardContent: projectRootWhiteboardData,
             fileSystemRoots: activeFileSystemRoots,
@@ -472,9 +474,9 @@ export default function ProjectPage() {
           await performSave(updatedProjectDataForNameChange); 
           setCurrentProject(prev => prev ? {...prev, name: newName, updatedAt: new Date().toISOString()} : null);
           setCurrentProjectName(newName);    
-          toast({title: "Project Renamed", description: `Project name updated to "${newName}".`});
+          setTimeout(() => toast({title: "Project Renamed", description: `Project name updated to "${newName}".`}), 0);
         } catch (error) {
-          toast({title: "Error", description: "Failed to update project name.", variant: "destructive"});
+          setTimeout(() => toast({title: "Error", description: "Failed to update project name.", variant: "destructive"}), 0);
           setEditingProjectName(currentProject.name); 
         }
       } else if (currentProject) {
@@ -488,11 +490,11 @@ export default function ProjectPage() {
   const confirmDeleteProject = useCallback(async () => {
     if (!currentProject) return;
     try {
-      await deleteProjectFromFirestore(currentProject.id); // Use Firestore delete
-      toast({ title: "Project Deleted", description: `"${currentProject.name}" has been deleted from the cloud.` });
+      await deleteProjectFromFirestore(currentProject.id); 
+      setTimeout(() => toast({ title: "Project Deleted", description: `"${currentProject.name}" has been deleted from the cloud.` }), 0);
       router.replace("/");
     } catch (error) {
-      toast({ title: "Error Deleting Project", description: "Could not delete project from cloud.", variant: "destructive" });
+      setTimeout(() => toast({ title: "Error Deleting Project", description: "Could not delete project from cloud.", variant: "destructive" }), 0);
     }
   }, [currentProject, router, toast]);
 
@@ -523,9 +525,8 @@ export default function ProjectPage() {
     };
     
     setActiveFileSystemRoots(prevRoots => addNodeToTreeRecursive(prevRoots, parentIdForNewItem, newNode));
-    // This change is local and will be picked up by the auto-save mechanism to Firestore
-
-    toast({ title: `${newItemType === 'file' ? 'File' : 'Folder'} Created`, description: `"${newNode.name}" added locally. Will sync shortly.`});
+    
+    setTimeout(() => toast({ title: `${newItemType === 'file' ? 'File' : 'Folder'} Created`, description: `"${newNode.name}" added locally. Will sync shortly.`}), 0);
     setIsNewItemDialogOpen(false);
     setNewItemType(null);
   }, [newItemName, newItemType, parentIdForNewItem, toast]);
@@ -533,7 +534,7 @@ export default function ProjectPage() {
 
   const handleNodeSelectedInExplorer = useCallback(async (selectedNode: FileSystemNode | null) => {
     if (isSavingRef.current) {
-        toast({ title: "Saving...", description: "Please wait for current changes to save before switching items.", duration: 1500});
+        setTimeout(() => toast({ title: "Saving...", description: "Please wait for current changes to save before switching items.", duration: 1500}), 0);
         return;
     }
     
@@ -583,7 +584,6 @@ export default function ProjectPage() {
     const nodeBeingDeleted = findNodeByIdRecursive(activeFileSystemRoots, nodeToDeleteId);
     const newRoots = deleteNodeFromTreeRecursive(activeFileSystemRoots, nodeToDeleteId);
     setActiveFileSystemRoots(newRoots); 
-    // This local change will trigger auto-save to Firestore
     
     if (selectedFileNodeId === nodeToDeleteId) {
         setSelectedFileNodeId(null); 
@@ -591,7 +591,7 @@ export default function ProjectPage() {
         setActiveWhiteboardData({...projectRootWhiteboardData});
         activeWhiteboardDataRef.current = {...projectRootWhiteboardData};
     }
-    toast({ title: "Item Deleted", description: `"${nodeBeingDeleted?.name || 'Item'}" removed locally. Will sync shortly.` });
+    setTimeout(() => toast({ title: "Item Deleted", description: `"${nodeBeingDeleted?.name || 'Item'}" removed locally. Will sync shortly.` }), 0);
     setNodeToDeleteId(null); 
   }, [
     nodeToDeleteId, selectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, 
@@ -609,7 +609,7 @@ export default function ProjectPage() {
 
   const handleMoveNode = useCallback((draggedNodeId: string, targetFolderId: string | null) => {
     if (draggedNodeId === targetFolderId) {
-        toast({ title: "Invalid Move", description: "Cannot move an item into itself.", variant: "destructive" });
+        setTimeout(() => toast({ title: "Invalid Move", description: "Cannot move an item into itself.", variant: "destructive" }), 0);
         return;
     }
 
@@ -618,7 +618,7 @@ export default function ProjectPage() {
 
       if (!removedNode) {
         console.error("Dragged node not found during move operation.");
-        toast({ title: "Move Error", description: "Could not find the item to move.", variant: "destructive" });
+        setTimeout(() => toast({ title: "Move Error", description: "Could not find the item to move.", variant: "destructive" }), 0);
         return prevRoots;
       }
 
@@ -637,7 +637,7 @@ export default function ProjectPage() {
         
         while(currentParentId) {
             if (currentParentId === draggedNodeId) {
-                toast({ title: "Invalid Move", description: "Cannot move a folder into one of its own subfolders.", variant: "destructive" });
+                setTimeout(() => toast({ title: "Invalid Move", description: "Cannot move a folder into one of its own subfolders.", variant: "destructive" }), 0);
                 return prevRoots; 
             }
             const parentOfCurrentTarget = findParentRecursive(prevRoots, currentParentId); 
@@ -646,9 +646,8 @@ export default function ProjectPage() {
       }
       
       const newRootsWithMovedNode = addNodeToTargetInTree(treeWithoutDraggedNode, targetFolderId, removedNode);
-      // This local change will trigger auto-save to Firestore.
       
-      toast({ title: "Item Moved", description: `"${removedNode.name}" moved locally. Will sync shortly.` });
+      setTimeout(() => toast({ title: "Item Moved", description: `"${removedNode.name}" moved locally. Will sync shortly.` }), 0);
       return newRootsWithMovedNode;
     });
   }, [toast]);
@@ -910,3 +909,5 @@ export default function ProjectPage() {
     </div>
   );
 }
+
+    
