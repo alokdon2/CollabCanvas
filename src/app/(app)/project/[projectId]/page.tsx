@@ -45,6 +45,13 @@ import { useToast } from "@/hooks/use-toast";
 import { useProjectContext } from "@/contexts/ProjectContext";
 import { FileExplorer } from "@/components/FileExplorer";
 import { dbGetProjectById, dbSaveProject, dbDeleteProject } from "@/lib/indexedDB";
+import {
+  loadProjectData as realtimeLoadProjectData,
+  saveProjectData as realtimeSaveProjectData,
+  subscribeToProjectUpdates as realtimeSubscribeToProjectUpdates,
+  unsubscribeFromAllProjectUpdates as realtimeUnsubscribeFromAllProjectUpdates
+} from "@/services/realtimeCollaborationService";
+
 
 type ViewMode = "editor" | "whiteboard" | "both";
 
@@ -55,14 +62,24 @@ const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = {
   files: {}
 };
 
+const ensureNodeContentRecursive = (nodes: FileSystemNode[]): FileSystemNode[] => {
+  return nodes.map(node => ({
+    ...node,
+    textContent: node.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
+    whiteboardContent: node.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
+    ...(node.children && { children: ensureNodeContentRecursive(node.children) }),
+  }));
+};
+
+
 const updateNodeInTreeRecursive = (
   nodes: FileSystemNode[],
   nodeId: string,
   newContent: { textContent?: string; whiteboardContent?: WhiteboardData | null }
 ): FileSystemNode[] => {
   return nodes.map(node => {
-    if (node.id === nodeId) { // Update content if ID matches, regardless of type
-      const updatedNode = { ...node, ...newContent }; 
+    if (node.id === nodeId) { 
+      const updatedNode = { ...node, ...newContent };
       return updatedNode;
     }
     if (node.children) {
@@ -92,7 +109,7 @@ const addNodeToTreeRecursive = (
   parentId: string | null,
   newNode: FileSystemNode
 ): FileSystemNode[] => {
-  if (parentId === null) { // Add to root
+  if (parentId === null) { 
     return [...nodes, newNode];
   }
   return nodes.map(node => {
@@ -185,7 +202,7 @@ export default function ProjectPage() {
   const [mounted, setMounted] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("both");
   const [isExplorerVisible, setIsExplorerVisible] = useState(true);
-  const [selectedFileNodeId, setSelectedFileNodeId] = useState<string | null>(null); // ID of the file OR FOLDER being edited, or null if root
+  const [selectedFileNodeId, setSelectedFileNodeId] = useState<string | null>(null); 
 
   const [isNewItemDialogOpen, setIsNewItemDialogOpen] = useState(false);
   const [newItemType, setNewItemType] = useState<'file' | 'folder' | null>(null);
@@ -197,55 +214,96 @@ export default function ProjectPage() {
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pendingSaveDataRef = useRef<{ project: Project } | null>(null);
+  const isSavingRef = useRef(false); // To prevent concurrent saves
+
+  const updateLocalStateFromProject = useCallback((projectData: Project | null) => {
+    if (!projectData) return;
+
+    const ensuredFileSystemRoots = ensureNodeContentRecursive(projectData.fileSystemRoots || []);
+    
+    setCurrentProject({...projectData, fileSystemRoots: ensuredFileSystemRoots});
+    setEditingProjectName(projectData.name);
+    setCurrentProjectName(projectData.name); // Update context
+    
+    const rootText = projectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT;
+    const rootBoard = projectData.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA};
+    setProjectRootTextContent(rootText);
+    setProjectRootWhiteboardData(rootBoard);
+    setActiveFileSystemRoots(ensuredFileSystemRoots);
+
+    // Determine active content based on current selectedFileNodeId
+    if (selectedFileNodeId) {
+        const selectedNode = findNodeByIdRecursive(ensuredFileSystemRoots, selectedFileNodeId);
+        if (selectedNode) {
+            setActiveTextContent(selectedNode.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
+            const newBoardData = selectedNode.whiteboardContent ? {...selectedNode.whiteboardContent} : {...DEFAULT_EMPTY_WHITEBOARD_DATA};
+            setActiveWhiteboardData(newBoardData);
+            activeWhiteboardDataRef.current = newBoardData;
+        } else { // Selected node not found (e.g. deleted), fall back to root
+            setSelectedFileNodeId(null);
+            setActiveTextContent(rootText);
+            setActiveWhiteboardData({...rootBoard});
+            activeWhiteboardDataRef.current = {...rootBoard};
+        }
+    } else { // No node selected, use root content
+        setActiveTextContent(rootText);
+        setActiveWhiteboardData({...rootBoard});
+        activeWhiteboardDataRef.current = {...rootBoard};
+    }
+  }, [setCurrentProjectName, selectedFileNodeId]);
+
 
   useEffect(() => {
     setMounted(true);
-    async function fetchProject() {
+    let unsubscribeRealtime: (() => void) | null = null;
+
+    async function fetchAndInitializeProject() {
       if (!projectId) return;
       setIsLoadingProject(true);
       try {
-        const projectData = await dbGetProjectById(projectId);
+        // 1. Try loading from real-time service first
+        let projectData = await realtimeLoadProjectData(projectId);
+        let source = "Realtime";
+
+        if (!projectData) {
+          // 2. Fallback to IndexedDB
+          projectData = await dbGetProjectById(projectId);
+          source = "IndexedDB";
+        }
+        
         if (projectData) {
-          // Ensure all file and folder nodes have default content if missing
-          const ensuredFileSystemRoots = (projectData.fileSystemRoots || []).map(node => ({
-            ...node,
-            textContent: node.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
-            whiteboardContent: node.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA},
-            ...(node.type === 'folder' && node.children ? { children: node.children.map(child => ({
-                ...child,
-                textContent: child.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
-                whiteboardContent: child.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA},
-            }))} : {})
-          }));
+          console.log(`Project loaded from ${source}`);
+          updateLocalStateFromProject(projectData);
 
+          // 3. Subscribe to real-time updates
+          unsubscribeRealtime = realtimeSubscribeToProjectUpdates(projectId, (updatedProject) => {
+            console.log("[Realtime] Received project update from subscription:", updatedProject.name, updatedProject.updatedAt);
+            // Avoid overwriting if a save is in progress or if incoming data is older
+            if (isSavingRef.current) {
+                console.log("[Realtime] Save in progress, skipping update from subscription for now.");
+                return;
+            }
+            if (currentProject && new Date(updatedProject.updatedAt) < new Date(currentProject.updatedAt)) {
+                console.log("[Realtime] Incoming update is older than current state, skipping.");
+                return;
+            }
+            toast({ title: "Project Updated", description: "Changes received from collaborators.", duration: 2000 });
+            updateLocalStateFromProject(updatedProject);
+          });
 
-          setCurrentProject({...projectData, fileSystemRoots: ensuredFileSystemRoots});
-          setEditingProjectName(projectData.name);
-          setCurrentProjectName(projectData.name);
-          
-          const rootText = projectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT;
-          const rootBoard = projectData.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA};
-          setProjectRootTextContent(rootText);
-          setProjectRootWhiteboardData(rootBoard);
-          
-          setActiveTextContent(rootText); 
-          setActiveWhiteboardData({...rootBoard}); 
-          activeWhiteboardDataRef.current = {...rootBoard}; 
-          setActiveFileSystemRoots(ensuredFileSystemRoots);
-          setSelectedFileNodeId(null); // Initially, project root is active
         } else {
           toast({ title: "Error", description: "Project not found.", variant: "destructive" });
           router.replace("/");
         }
       } catch (error) {
         console.error("Failed to fetch project:", error);
-        toast({ title: "Error", description: "Could not load project data.", variant: "destructive" });
+        toast({ title: "Error", description: `Could not load project data: ${(error as Error).message}`, variant: "destructive" });
         router.replace("/");
       } finally {
         setIsLoadingProject(false);
       }
     }
-    fetchProject();
+    fetchAndInitializeProject();
     
     if (typeof registerTriggerNewFile === 'function') {
         registerTriggerNewFile(() => handleOpenNewItemDialog('file', null));
@@ -257,26 +315,42 @@ export default function ProjectPage() {
     return () => {
       setCurrentProjectName(null);
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      if (unsubscribeRealtime) {
+        unsubscribeRealtime();
+      } else {
+        // Fallback if subscription was somehow not set but projectId exists
+        realtimeUnsubscribeFromAllProjectUpdates(projectId);
+      }
     };
-  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder]); 
+  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder, updateLocalStateFromProject, currentProject]); 
 
   useEffect(() => {
     activeWhiteboardDataRef.current = activeWhiteboardData;
   }, [activeWhiteboardData]);
 
   const performSave = useCallback(async (projectToSave: Project | null) => {
-    if (!projectToSave) return;
+    if (!projectToSave || isSavingRef.current) return;
+    
+    isSavingRef.current = true;
     try {
+      // Save to IndexedDB (local cache/offline)
       await dbSaveProject(projectToSave);
+      
+      // Save to Realtime Service (backend)
+      await realtimeSaveProjectData(projectToSave);
+
       if (projectToSave.name !== currentProjectNameFromContext) {
         setCurrentProjectName(projectToSave.name);
       }
+      // Only show toast if not part of a rapid auto-save sequence cleared by another action
       if (!saveTimeoutRef.current) { 
-          toast({ title: "Progress Saved", description: "Your changes have been saved.", duration: 2000 });
+          toast({ title: "Progress Saved", description: "Your changes have been saved locally and synced.", duration: 2000 });
       }
     } catch (error) {
       console.error("Failed to save project:", error);
       toast({ title: "Save Error", description: `Could not save project: ${(error as Error).message}`, variant: "destructive" });
+    } finally {
+      isSavingRef.current = false;
     }
   }, [currentProjectNameFromContext, setCurrentProjectName, toast]);
 
@@ -292,7 +366,7 @@ export default function ProjectPage() {
         fileSystemRoots: [...activeFileSystemRoots], 
         textContent: projectRootTextContent, 
         whiteboardContent: projectRootWhiteboardData, 
-        updatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(), // Crucial for resolving potential conflicts
       };
     };
     
@@ -304,14 +378,14 @@ export default function ProjectPage() {
     }
 
     saveTimeoutRef.current = setTimeout(async () => {
-      if (pendingSaveDataRef.current?.project) {
+      if (pendingSaveDataRef.current?.project && !isSavingRef.current) {
         const projectBeingSaved = pendingSaveDataRef.current.project;
         pendingSaveDataRef.current = null; 
         saveTimeoutRef.current = null; 
         await performSave(projectBeingSaved);
         toast({ title: "Auto-Saved", description: "Changes automatically saved.", duration: 2000});
       }
-    }, 1500);
+    }, 2000); // Increased debounce time slightly
 
     return () => {
       if (saveTimeoutRef.current) {
@@ -328,11 +402,11 @@ export default function ProjectPage() {
 
   const handleTextChange = useCallback((newText: string) => {
     setActiveTextContent(newText); 
-    if (selectedFileNodeId) { // File or Folder is selected
+    if (selectedFileNodeId) { 
       setActiveFileSystemRoots(prevRoots => 
         updateNodeInTreeRecursive(prevRoots, selectedFileNodeId, { textContent: newText })
       );
-    } else { // Editing project root's text content
+    } else { 
       setProjectRootTextContent(newText); 
     }
   }, [selectedFileNodeId]); 
@@ -347,11 +421,11 @@ export default function ProjectPage() {
         
         setActiveWhiteboardData(newData); 
 
-        if (selectedFileNodeId) { // File or Folder is selected
+        if (selectedFileNodeId) { 
             setActiveFileSystemRoots(prevRoots => 
               updateNodeInTreeRecursive(prevRoots, selectedFileNodeId, { whiteboardContent: newData })
             );
-        } else { // Editing project root's whiteboard content
+        } else { 
             setProjectRootWhiteboardData(newData); 
         }
     }
@@ -380,7 +454,7 @@ export default function ProjectPage() {
              pendingSaveDataRef.current = null;
           }
           
-          await dbSaveProject(updatedProjectData); 
+          await performSave(updatedProjectData); // This ensures name change is saved to realtime service
           setCurrentProject(updatedProjectData); 
           setCurrentProjectName(newName);    
           toast({title: "Project Renamed", description: `Project name updated to "${newName}".`});
@@ -400,6 +474,8 @@ export default function ProjectPage() {
     if (!currentProject) return;
     try {
       await dbDeleteProject(currentProject.id);
+      // Potentially add a call to delete from realtime service here
+      // await realtimeDeleteProjectData(currentProject.id);
       toast({ title: "Project Deleted", description: `"${currentProject.name}" has been deleted.` });
       router.replace("/");
     } catch (error) {
@@ -428,9 +504,9 @@ export default function ProjectPage() {
       id: crypto.randomUUID(),
       name: newItemName.trim(),
       type: newItemType,
-      textContent: DEFAULT_EMPTY_TEXT_CONTENT, // Initialize for both files and folders
-      whiteboardContent: {...DEFAULT_EMPTY_WHITEBOARD_DATA}, // Initialize for both
-      ...(newItemType === 'folder' ? { children: [] } : {}), // children only for folders
+      textContent: DEFAULT_EMPTY_TEXT_CONTENT, 
+      whiteboardContent: {...DEFAULT_EMPTY_WHITEBOARD_DATA}, 
+      ...(newItemType === 'folder' ? { children: [] } : {}), 
     };
     
     setActiveFileSystemRoots(prevRoots => addNodeToTreeRecursive(prevRoots, parentIdForNewItem, newNode));
@@ -442,6 +518,12 @@ export default function ProjectPage() {
   
 
   const handleNodeSelectedInExplorer = useCallback(async (selectedNode: FileSystemNode | null) => {
+    if (isSavingRef.current) {
+        console.log("Save in progress, delaying node selection change.");
+        toast({ title: "Saving...", description: "Please wait for current changes to save before switching items.", duration: 1500});
+        return;
+    }
+
     if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null;
@@ -465,12 +547,12 @@ export default function ProjectPage() {
     const newSelectedNodeId = selectedNode ? selectedNode.id : null;
     setSelectedFileNodeId(newSelectedNodeId);
 
-    if (selectedNode) { // A file or folder is selected
+    if (selectedNode) { 
         setActiveTextContent(selectedNode.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
         const newBoardData = selectedNode.whiteboardContent ? {...selectedNode.whiteboardContent} : {...DEFAULT_EMPTY_WHITEBOARD_DATA};
         setActiveWhiteboardData(newBoardData);
         activeWhiteboardDataRef.current = newBoardData; 
-    } else { // Project root is active (no node selected)
+    } else { 
         setActiveTextContent(projectRootTextContent);
         setActiveWhiteboardData({...projectRootWhiteboardData});
         activeWhiteboardDataRef.current = {...projectRootWhiteboardData};
@@ -478,7 +560,7 @@ export default function ProjectPage() {
   }, [
     performSave, 
     projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots,
-    currentProject, editingProjectName, 
+    currentProject, editingProjectName, toast // Added toast
   ]);
 
 
@@ -487,7 +569,7 @@ export default function ProjectPage() {
   }, []);
 
   const confirmDeleteNode = useCallback(async () => {
-    if (!nodeToDeleteId || !currentProject) return;
+    if (!nodeToDeleteId || !currentProject || isSavingRef.current) return;
 
     if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
       clearTimeout(saveTimeoutRef.current);
@@ -579,7 +661,7 @@ export default function ProjectPage() {
 
   if (!mounted || isLoadingProject || !currentProject) {
     return (
-      <div className="flex min-h-screen flex-col fixed inset-0 pt-14"> 
+      <div className="flex h-screen flex-col fixed inset-0 pt-14"> 
          <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-14">
             <div className="container flex h-full items-center px-4 sm:px-6 lg:px-8"> 
                 <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2">
@@ -633,11 +715,11 @@ export default function ProjectPage() {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
-              <DropdownMenuItem onClick={() => handleOpenNewItemDialog('file', null)}>
+              <DropdownMenuItem onClick={() => handleOpenNewItemDialog('file', selectedFileNodeId && findNodeByIdRecursive(activeFileSystemRoots, selectedFileNodeId)?.type === 'folder' ? selectedFileNodeId : null )}>
                 <FilePlus2 className="mr-2 h-4 w-4" />
                 <span>New File</span>
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => handleOpenNewItemDialog('folder', null)}>
+              <DropdownMenuItem onClick={() => handleOpenNewItemDialog('folder', selectedFileNodeId && findNodeByIdRecursive(activeFileSystemRoots, selectedFileNodeId)?.type === 'folder' ? selectedFileNodeId : null)}>
                 <FolderPlus className="mr-2 h-4 w-4" />
                 <span>New Folder</span>
               </DropdownMenuItem>
@@ -776,7 +858,10 @@ export default function ProjectPage() {
             <DialogTitle>Create New {newItemType === 'file' ? 'File' : 'Folder'}</DialogTitle>
             <DialogDescription>
               Enter a name for your new {newItemType}.
-              {parentIdForNewItem && " It will be created in the selected folder."}
+              {parentIdForNewItem ? 
+                ` It will be created in the folder "${findNodeByIdRecursive(activeFileSystemRoots, parentIdForNewItem)?.name || 'selected folder'}".` :
+                " It will be created at the root of the project."
+              }
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
