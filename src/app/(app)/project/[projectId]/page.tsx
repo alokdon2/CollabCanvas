@@ -184,6 +184,7 @@ export default function ProjectPage() {
     <div className="flex h-screen flex-col fixed inset-0">
        <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-16 items-center px-4 sm:px-6 lg:px-8">
+          {/* Left section: Back button and Project Name */}
           <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2" aria-label="Back to dashboard">
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -208,20 +209,18 @@ export default function ProjectPage() {
             </Button>
           </div>
 
-          <div className="flex-grow"></div> {/* Spacer */}
-          
-          <span className="text-xs text-muted-foreground mr-2">---DEBUG---</span> {/* DEBUG MARKER */}
+          {/* Right section: All controls, pushed by ml-auto */}
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs text-muted-foreground mr-2">---DEBUG---</span> {/* DEBUG MARKER */}
 
-          {/* Group for Explorer and View Mode Toggles */}
-          <div className="flex items-center gap-2 mx-2"> 
             <Button 
               variant="outline" 
-              size="icon" // Simplified to icon size
+              size="icon"
               onClick={() => setIsExplorerVisible(!isExplorerVisible)} 
               aria-label={isExplorerVisible ? "Hide File Explorer" : "Show File Explorer"}
               title={isExplorerVisible ? "Hide File Explorer" : "Show File Explorer"}
             >
-              <FolderOpen className="h-5 w-5" /> {/* Icon only, no extra classes */}
+              <FolderOpen className="h-5 w-5" />
             </Button>
 
             <div className="flex items-center gap-1 px-2 rounded-md border bg-muted">
@@ -235,9 +234,7 @@ export default function ProjectPage() {
                 <LayoutDashboard className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Board</span>
               </Button>
             </div>
-          </div>
           
-          <div className="flex items-center space-x-2"> {/* Group for Share and Delete */}
             <Button variant="outline" onClick={() => setIsShareDialogOpen(true)}>
               <Share2 className="mr-2 h-4 w-4" /> Share
             </Button>
