@@ -11,7 +11,15 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderOpen } from "lucide-react";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
-import { FileExplorer } from "@/components/FileExplorer";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -29,6 +37,7 @@ import {
   ResizableHandle,
 } from "@/components/ui/resizable";
 import { useToast } from "@/hooks/use-toast";
+import { useProjectContext } from "@/contexts/ProjectContext";
 
 type ViewMode = "editor" | "whiteboard" | "both";
 
@@ -37,6 +46,7 @@ export default function ProjectPage() {
   const params = useParams();
   const projectId = params.projectId as string;
   const { toast } = useToast();
+  const { setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder } = useProjectContext();
 
   const [projects, setProjects] = useLocalStorage<Project[]>("collabcanvas-projects", []);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
@@ -50,7 +60,12 @@ export default function ProjectPage() {
   const [editingProjectName, setEditingProjectName] = useState("");
   const [mounted, setMounted] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("both");
-  const [isExplorerVisible, setIsExplorerVisible] = useState(true); 
+
+  // State for New File/Folder Dialogs
+  const [isNewItemDialogOpen, setIsNewItemDialogOpen] = useState(false);
+  const [newItemType, setNewItemType] = useState<'file' | 'folder' | null>(null);
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemError, setNewItemError] = useState("");
 
   useEffect(() => {
     setMounted(true);
@@ -61,10 +76,19 @@ export default function ProjectPage() {
       setWhiteboardData(project.whiteboardContent || { elements: [], appState: {} });
       setFileSystemRoots(project.fileSystemRoots || []);
       setEditingProjectName(project.name);
+      setCurrentProjectName(project.name); // Set name in context
     } else if (mounted && projects.length > 0) {
       // router.replace("/"); 
     }
-  }, [projectId, projects, mounted]);
+    
+    // Register trigger functions with context
+    registerTriggerNewFile(() => handleOpenNewItemDialog('file'));
+    registerTriggerNewFolder(() => handleOpenNewItemDialog('folder'));
+
+    return () => {
+      setCurrentProjectName(null); // Clear name from context on unmount
+    };
+  }, [projectId, projects, mounted, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder]);
 
   useEffect(() => {
     if (!currentProject || !mounted) return;
@@ -84,10 +108,13 @@ export default function ProjectPage() {
             : p
         )
       );
+      if (editingProjectName && editingProjectName !== currentProjectName) {
+         setCurrentProjectName(editingProjectName);
+      }
     }, 1000); 
 
     return () => clearTimeout(handler);
-  }, [textContent, whiteboardData, fileSystemRoots, editingProjectName, currentProject, projectId, setProjects, mounted]);
+  }, [textContent, whiteboardData, fileSystemRoots, editingProjectName, currentProject, projectId, setProjects, mounted, setCurrentProjectName]);
 
 
   const handleTextChange = useCallback((newText: string) => {
@@ -101,8 +128,10 @@ export default function ProjectPage() {
   const handleNameEditToggle = () => {
     if (isEditingName && currentProject) { 
         if (editingProjectName.trim() && editingProjectName.trim() !== currentProject.name) {
-            setProjects(prev => prev.map(p => p.id === projectId ? { ...p, name: editingProjectName.trim(), updatedAt: new Date().toISOString() } : p));
-            setCurrentProject(prev => prev ? {...prev, name: editingProjectName.trim()} : null);
+            const newName = editingProjectName.trim();
+            setProjects(prev => prev.map(p => p.id === projectId ? { ...p, name: newName, updatedAt: new Date().toISOString() } : p));
+            setCurrentProject(prev => prev ? {...prev, name: newName} : null);
+            setCurrentProjectName(newName);
         } else {
             setEditingProjectName(currentProject.name); 
         }
@@ -117,15 +146,13 @@ export default function ProjectPage() {
   };
 
   const handleAddNodeToTree = (nodes: FileSystemNode[], parentId: string | null, newNode: FileSystemNode): FileSystemNode[] => {
-    if (parentId === null) {
+    if (parentId === null) { // For now, only adding to root
       return [...nodes, newNode];
     }
+    // Simplified: Add logic for adding to subfolders if needed later
     return nodes.map(node => {
-      if (node.id === parentId) {
-        if (node.type === 'folder') {
-          return { ...node, children: [...(node.children || []), newNode] };
-        }
-        return node; 
+      if (node.id === parentId && node.type === 'folder') {
+        return { ...node, children: [...(node.children || []), newNode] };
       }
       if (node.children) {
         return { ...node, children: handleAddNodeToTree(node.children, parentId, newNode) };
@@ -134,31 +161,41 @@ export default function ProjectPage() {
     });
   };
 
-  const handleAddFileToProject = (name: string, parentId: string | null) => {
-    const newFile: FileSystemNode = {
-      id: crypto.randomUUID(),
-      name,
-      type: 'file',
-      content: '', 
-    };
-    setFileSystemRoots(prevRoots => handleAddNodeToTree(prevRoots, parentId, newFile));
-    toast({ title: "File Created", description: `File "${name}" added.`});
+  const handleOpenNewItemDialog = (type: 'file' | 'folder') => {
+    setNewItemType(type);
+    setNewItemName("");
+    setNewItemError("");
+    setIsNewItemDialogOpen(true);
   };
 
-  const handleAddFolderToProject = (name: string, parentId: string | null) => {
-    const newFolder: FileSystemNode = {
-      id: crypto.randomUUID(),
-      name,
-      type: 'folder',
-      children: [],
-    };
-    setFileSystemRoots(prevRoots => handleAddNodeToTree(prevRoots, parentId, newFolder));
-    toast({ title: "Folder Created", description: `Folder "${name}" added.`});
-  };
-  
-  const handleSelectNode = (nodeId: string, type: 'file' | 'folder') => {
-    console.log(`Selected ${type}: ${nodeId}`);
-    // Future: Load file content into an editor or display folder details
+  const handleCreateNewItem = () => {
+    if (!newItemName.trim() || !newItemType) {
+      setNewItemError(`Name cannot be empty.`);
+      return;
+    }
+    setNewItemError("");
+
+    if (newItemType === 'file') {
+      const newFile: FileSystemNode = {
+        id: crypto.randomUUID(),
+        name: newItemName.trim(),
+        type: 'file',
+        content: '', 
+      };
+      setFileSystemRoots(prevRoots => handleAddNodeToTree(prevRoots, null, newFile));
+      toast({ title: "File Created", description: `File "${newItemName.trim()}" added.`});
+    } else if (newItemType === 'folder') {
+      const newFolder: FileSystemNode = {
+        id: crypto.randomUUID(),
+        name: newItemName.trim(),
+        type: 'folder',
+        children: [],
+      };
+      setFileSystemRoots(prevRoots => handleAddNodeToTree(prevRoots, null, newFolder));
+      toast({ title: "Folder Created", description: `Folder "${newItemName.trim()}" added.`});
+    }
+    setIsNewItemDialogOpen(false);
+    setNewItemType(null);
   };
 
 
@@ -181,14 +218,13 @@ export default function ProjectPage() {
   }
   
   return (
-    <div className="flex h-screen flex-col fixed inset-0">
-       <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center px-4 sm:px-6 lg:px-8">
-          {/* Left section: Back button and Project Name */}
+    <div className="flex h-screen flex-col fixed inset-0 pt-16"> {/* Added pt-16 for global navbar */}
+       {/* Simplified Project-Specific Header */}
+       <header className="sticky top-16 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"> {/* Adjusted top */}
+        <div className="container flex h-14 items-center px-4 sm:px-6 lg:px-8">
           <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2" aria-label="Back to dashboard">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <span className="text-xs text-muted-foreground mr-2">---DEBUG-MARKER-AFTER-BACK---</span> {/* MOVED DEBUG MARKER */}
           
           <div className="flex items-center">
             {isEditingName ? (
@@ -202,7 +238,7 @@ export default function ProjectPage() {
               />
             ) : (
               <h1 className="text-lg font-semibold truncate max-w-[150px] sm:max-w-xs cursor-pointer hover:underline" onClick={handleNameEditToggle}>
-                {editingProjectName}
+                {editingProjectName} 
               </h1>
             )}
             <Button variant="ghost" size="icon" onClick={handleNameEditToggle} className="ml-1" aria-label="Edit project name">
@@ -210,20 +246,7 @@ export default function ProjectPage() {
             </Button>
           </div>
 
-          {/* Right section: All controls, pushed by ml-auto */}
           <div className="ml-auto flex items-center gap-2">
-            
-
-            <Button 
-              variant="outline" 
-              size="icon"
-              onClick={() => setIsExplorerVisible(!isExplorerVisible)} 
-              aria-label={isExplorerVisible ? "Hide File Explorer" : "Show File Explorer"}
-              title={isExplorerVisible ? "Hide File Explorer" : "Show File Explorer"}
-            >
-              <FolderOpen className="h-5 w-5" />
-            </Button>
-
             <div className="flex items-center gap-1 px-2 rounded-md border bg-muted">
               <Button variant={viewMode === 'editor' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('editor')} aria-label="Editor View">
                 <Edit3 className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Editor</span>
@@ -266,22 +289,7 @@ export default function ProjectPage() {
       </header>
       <main className="flex-1 overflow-hidden h-full">
         <ResizablePanelGroup direction="horizontal" className="h-full w-full">
-          {isExplorerVisible && (
-            <>
-              <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
-                <div className="h-full p-1 sm:p-2 md:p-3">
-                  <FileExplorer 
-                    nodes={fileSystemRoots}
-                    onAddFile={handleAddFileToProject}
-                    onAddFolder={handleAddFolderToProject}
-                    onSelectNode={handleSelectNode}
-                  />
-                </div>
-              </ResizablePanel>
-              <ResizableHandle withHandle />
-            </>
-          )}
-          <ResizablePanel defaultSize={isExplorerVisible ? 80 : 100}>
+          <ResizablePanel defaultSize={100}>
             <ResizablePanelGroup direction="horizontal" className="h-full w-full">
               {(viewMode === "editor" || viewMode === "both") && (
                 <ResizablePanel defaultSize={viewMode === 'editor' ? 100 : 50} minSize={viewMode === 'both' ? 20 : 100}>
@@ -317,7 +325,32 @@ export default function ProjectPage() {
           onOpenChange={setIsShareDialogOpen}
         />
       )}
+
+      {/* New Item Dialog */}
+      <Dialog open={isNewItemDialogOpen} onOpenChange={setIsNewItemDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Create New {newItemType === 'file' ? 'File' : 'Folder'}</DialogTitle>
+            <DialogDescription>
+              Enter a name for your new {newItemType}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <Label htmlFor="itemName">Name</Label>
+            <Input
+              id="itemName"
+              value={newItemName}
+              onChange={(e) => setNewItemName(e.target.value)}
+              aria-describedby="item-name-error"
+            />
+             {newItemError && <p id="item-name-error" className="text-sm text-red-500">{newItemError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsNewItemDialogOpen(false)}>Cancel</Button>
+            <Button onClick={handleCreateNewItem}>Create {newItemType === 'file' ? 'File' : 'Folder'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
-

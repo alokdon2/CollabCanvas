@@ -1,9 +1,11 @@
+
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import { Toaster } from "@/components/ui/toaster";
 import { siteConfig } from '@/config/site';
+import { ProjectProvider } from '@/contexts/ProjectContext'; // Added
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -34,13 +36,15 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`}>
-        <ThemeProvider
-          defaultTheme="system"
-          storageKey="collabcanvas-theme"
-        >
-          {children}
-          <Toaster />
-        </ThemeProvider>
+        <ProjectProvider> {/* Added ProjectProvider Wrapper */}
+          <ThemeProvider
+            defaultTheme="system"
+            storageKey="collabcanvas-theme"
+          >
+            {children}
+            <Toaster />
+          </ThemeProvider>
+        </ProjectProvider>
       </body>
     </html>
   );
