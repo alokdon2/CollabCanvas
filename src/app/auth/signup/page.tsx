@@ -1,3 +1,6 @@
+
+'use client';
+
 import Link from "next/link";
 import AppLogo from "@/components/AppLogo";
 import { Button } from "@/components/ui/button";
