@@ -13,7 +13,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +22,7 @@ interface FileExplorerProps {
   nodes: FileSystemNode[];
   onAddFile: (name: string, parentId: string | null) => void; // parentId null for root
   onAddFolder: (name: string, parentId: string | null) => void; // parentId null for root
-  onSelectNode?: (nodeId: string, type: 'file' | 'folder') => void; // For future use, e.g. opening file
+  onSelectNode?: (nodeId: string, type: 'file' | 'folder') => void; 
 }
 
 export function FileExplorer({ nodes, onAddFile, onAddFolder, onSelectNode }: FileExplorerProps) {
@@ -31,12 +30,10 @@ export function FileExplorer({ nodes, onAddFile, onAddFolder, onSelectNode }: Fi
   const [isFolderDialogOpen, setIsFolderDialogOpen] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [error, setError] = useState("");
-  // const [selectedParentId, setSelectedParentId] = useState<string | null>(null); // For future context-menu creation
 
   const openDialog = (type: "file" | "folder", parentId: string | null = null) => {
     setNewItemName("");
     setError("");
-    // setSelectedParentId(parentId); // For future context-menu creation
     if (type === "file") setIsFileDialogOpen(true);
     else setIsFolderDialogOpen(true);
   };
@@ -48,10 +45,10 @@ export function FileExplorer({ nodes, onAddFile, onAddFolder, onSelectNode }: Fi
     }
     setError("");
     if (type === "file") {
-      onAddFile(newItemName.trim(), null); // Currently always adds to root
+      onAddFile(newItemName.trim(), null); 
       setIsFileDialogOpen(false);
     } else {
-      onAddFolder(newItemName.trim(), null); // Currently always adds to root
+      onAddFolder(newItemName.trim(), null); 
       setIsFolderDialogOpen(false);
     }
     setNewItemName("");
@@ -80,7 +77,6 @@ export function FileExplorer({ nodes, onAddFile, onAddFolder, onSelectNode }: Fi
         )}
       </ScrollArea>
 
-      {/* New File Dialog */}
       <Dialog open={isFileDialogOpen} onOpenChange={setIsFileDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -104,7 +100,6 @@ export function FileExplorer({ nodes, onAddFile, onAddFolder, onSelectNode }: Fi
         </DialogContent>
       </Dialog>
 
-      {/* New Folder Dialog */}
       <Dialog open={isFolderDialogOpen} onOpenChange={setIsFolderDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>

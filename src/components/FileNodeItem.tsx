@@ -10,14 +10,14 @@ import { cn } from "@/lib/utils";
 interface FileNodeItemProps {
   node: FileSystemNode;
   level?: number;
-  onSelectNode?: (nodeId: string, type: 'file' | 'folder') => void; // Placeholder for future use
+  onSelectNode?: (nodeId: string, type: 'file' | 'folder') => void;
 }
 
 export function FileNodeItem({ node, level = 0, onSelectNode }: FileNodeItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   const handleToggleExpand = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent node selection when toggling
+    e.stopPropagation(); 
     if (node.type === "folder") {
       setIsExpanded(!isExpanded);
     }
@@ -27,22 +27,19 @@ export function FileNodeItem({ node, level = 0, onSelectNode }: FileNodeItemProp
     if (onSelectNode) {
       onSelectNode(node.id, node.type);
     }
-    // If it's a file, could also trigger opening it in an editor here.
-    // If it's a folder, selection might just highlight it or toggle expansion.
     if (node.type === 'folder') {
         setIsExpanded(!isExpanded);
     }
   };
 
   const Icon = node.type === "folder" ? Folder : File;
-  const indentStyle = { paddingLeft: `${level * 1.25}rem` }; // 0.75rem per level
+  const indentStyle = { paddingLeft: `${level * 1.25}rem` };
 
   return (
     <div>
       <div
         className={cn(
           "flex items-center py-1.5 px-2 rounded-md hover:bg-accent cursor-pointer text-sm",
-          // Add selected styles later if needed
         )}
         style={indentStyle}
         onClick={handleSelect}
@@ -61,7 +58,7 @@ export function FileNodeItem({ node, level = 0, onSelectNode }: FileNodeItemProp
             {isExpanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
           </Button>
         ) : (
-          <span className="w-6 mr-1 flex-shrink-0"></span> // Placeholder for alignment
+          <span className="w-6 mr-1 flex-shrink-0"></span> 
         )}
         <Icon className="h-4 w-4 mr-2 flex-shrink-0 text-muted-foreground" />
         <span className="truncate flex-grow">{node.name}</span>
@@ -86,4 +83,3 @@ export function FileNodeItem({ node, level = 0, onSelectNode }: FileNodeItemProp
     </div>
   );
 }
-

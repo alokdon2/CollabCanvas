@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderOpen } from "lucide-react";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
-import { FileExplorer } from "@/components/FileExplorer"; // Added
+import { FileExplorer } from "@/components/FileExplorer";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,14 +43,14 @@ export default function ProjectPage() {
   
   const [textContent, setTextContent] = useState("<p></p>");
   const [whiteboardData, setWhiteboardData] = useState<WhiteboardData | null>(null);
-  const [fileSystemRoots, setFileSystemRoots] = useState<FileSystemNode[]>([]); // Added
+  const [fileSystemRoots, setFileSystemRoots] = useState<FileSystemNode[]>([]); 
   
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingProjectName, setEditingProjectName] = useState("");
   const [mounted, setMounted] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("both");
-  const [isExplorerVisible, setIsExplorerVisible] = useState(true); // State for explorer panel visibility
+  const [isExplorerVisible, setIsExplorerVisible] = useState(true); 
 
   useEffect(() => {
     setMounted(true);
@@ -59,14 +59,13 @@ export default function ProjectPage() {
       setCurrentProject(project);
       setTextContent(project.textContent?.trim() ? project.textContent : "<p></p>");
       setWhiteboardData(project.whiteboardContent || { elements: [], appState: {} });
-      setFileSystemRoots(project.fileSystemRoots || []); // Initialize file system
+      setFileSystemRoots(project.fileSystemRoots || []);
       setEditingProjectName(project.name);
     } else if (mounted && projects.length > 0) {
       // router.replace("/"); 
     }
   }, [projectId, projects, mounted]);
 
-  // Auto-save functionality
   useEffect(() => {
     if (!currentProject || !mounted) return;
 
@@ -79,7 +78,7 @@ export default function ProjectPage() {
                 name: editingProjectName || p.name,
                 textContent, 
                 whiteboardContent: whiteboardData, 
-                fileSystemRoots, // Save file system
+                fileSystemRoots, 
                 updatedAt: new Date().toISOString() 
               }
             : p
@@ -119,14 +118,14 @@ export default function ProjectPage() {
 
   const handleAddNodeToTree = (nodes: FileSystemNode[], parentId: string | null, newNode: FileSystemNode): FileSystemNode[] => {
     if (parentId === null) {
-      return [...nodes, newNode]; // Add to root
+      return [...nodes, newNode];
     }
     return nodes.map(node => {
       if (node.id === parentId) {
         if (node.type === 'folder') {
           return { ...node, children: [...(node.children || []), newNode] };
         }
-        return node; // Cannot add to a file
+        return node; 
       }
       if (node.children) {
         return { ...node, children: handleAddNodeToTree(node.children, parentId, newNode) };
@@ -140,7 +139,7 @@ export default function ProjectPage() {
       id: crypto.randomUUID(),
       name,
       type: 'file',
-      content: '', // Initialize with empty content
+      content: '', 
     };
     setFileSystemRoots(prevRoots => handleAddNodeToTree(prevRoots, parentId, newFile));
     toast({ title: "File Created", description: `File "${name}" added.`});
@@ -157,10 +156,8 @@ export default function ProjectPage() {
     toast({ title: "Folder Created", description: `Folder "${name}" added.`});
   };
   
-  // Placeholder for opening/selecting files
   const handleSelectNode = (nodeId: string, type: 'file' | 'folder') => {
     console.log(`Selected ${type}: ${nodeId}`);
-    // Future: if type is file, load its content into an editor tab or similar
   };
 
 
@@ -316,4 +313,3 @@ export default function ProjectPage() {
     </div>
   );
 }
-
