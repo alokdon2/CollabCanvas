@@ -8,7 +8,7 @@ import { Whiteboard } from "@/components/Whiteboard";
 import useLocalStorage from "@/hooks/use-local-storage";
 import type { Project, WhiteboardData, FileSystemNode } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderOpen } from "lucide-react";
+import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderTree } from "lucide-react"; // Added FolderTree
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -38,6 +38,7 @@ import {
 } from "@/components/ui/resizable";
 import { useToast } from "@/hooks/use-toast";
 import { useProjectContext } from "@/contexts/ProjectContext";
+import { FileExplorer } from "@/components/FileExplorer"; // Added FileExplorer import
 
 type ViewMode = "editor" | "whiteboard" | "both";
 
@@ -60,6 +61,9 @@ export default function ProjectPage() {
   const [editingProjectName, setEditingProjectName] = useState("");
   const [mounted, setMounted] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("both");
+  const [isExplorerVisible, setIsExplorerVisible] = useState(true); // State for explorer visibility
+  const [selectedFileNode, setSelectedFileNode] = useState<FileSystemNode | null>(null);
+
 
   // State for New File/Folder Dialogs
   const [isNewItemDialogOpen, setIsNewItemDialogOpen] = useState(false);
@@ -76,17 +80,16 @@ export default function ProjectPage() {
       setWhiteboardData(project.whiteboardContent || { elements: [], appState: {} });
       setFileSystemRoots(project.fileSystemRoots || []);
       setEditingProjectName(project.name);
-      setCurrentProjectName(project.name); // Set name in context
+      setCurrentProjectName(project.name); 
     } else if (mounted && projects.length > 0) {
       // router.replace("/"); 
     }
     
-    // Register trigger functions with context
     registerTriggerNewFile(() => handleOpenNewItemDialog('file'));
     registerTriggerNewFolder(() => handleOpenNewItemDialog('folder'));
 
     return () => {
-      setCurrentProjectName(null); // Clear name from context on unmount
+      setCurrentProjectName(null); 
     };
   }, [projectId, projects, mounted, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder]);
 
@@ -108,7 +111,7 @@ export default function ProjectPage() {
             : p
         )
       );
-      if (editingProjectName && editingProjectName !== currentProjectName) {
+      if (editingProjectName && currentProject && editingProjectName !== currentProject.name) {
          setCurrentProjectName(editingProjectName);
       }
     }, 1000); 
@@ -146,10 +149,11 @@ export default function ProjectPage() {
   };
 
   const handleAddNodeToTree = (nodes: FileSystemNode[], parentId: string | null, newNode: FileSystemNode): FileSystemNode[] => {
-    if (parentId === null) { // For now, only adding to root
+    // For now, only adding to root if parentId is null.
+    // TODO: Implement adding to specific parent folder if parentId is provided.
+    if (parentId === null) { 
       return [...nodes, newNode];
     }
-    // Simplified: Add logic for adding to subfolders if needed later
     return nodes.map(node => {
       if (node.id === parentId && node.type === 'folder') {
         return { ...node, children: [...(node.children || []), newNode] };
@@ -173,30 +177,34 @@ export default function ProjectPage() {
       setNewItemError(`Name cannot be empty.`);
       return;
     }
+    // TODO: Add validation for duplicate names within the same parent
     setNewItemError("");
 
-    if (newItemType === 'file') {
-      const newFile: FileSystemNode = {
-        id: crypto.randomUUID(),
-        name: newItemName.trim(),
-        type: 'file',
-        content: '', 
-      };
-      setFileSystemRoots(prevRoots => handleAddNodeToTree(prevRoots, null, newFile));
-      toast({ title: "File Created", description: `File "${newItemName.trim()}" added.`});
-    } else if (newItemType === 'folder') {
-      const newFolder: FileSystemNode = {
-        id: crypto.randomUUID(),
-        name: newItemName.trim(),
-        type: 'folder',
-        children: [],
-      };
-      setFileSystemRoots(prevRoots => handleAddNodeToTree(prevRoots, null, newFolder));
-      toast({ title: "Folder Created", description: `Folder "${newItemName.trim()}" added.`});
-    }
+    const newNode: FileSystemNode = {
+      id: crypto.randomUUID(),
+      name: newItemName.trim(),
+      type: newItemType,
+      ...(newItemType === 'file' ? { content: '' } : { children: [] }),
+    };
+    // For now, new items are added to the root.
+    setFileSystemRoots(prevRoots => handleAddNodeToTree(prevRoots, null, newNode));
+    toast({ title: `${newItemType === 'file' ? 'File' : 'Folder'} Created`, description: `"${newNode.name}" added.`});
+    
     setIsNewItemDialogOpen(false);
     setNewItemType(null);
   };
+  
+  const handleNodeSelectedInExplorer = useCallback((node: FileSystemNode | null) => {
+    setSelectedFileNode(node);
+    if (node) {
+      toast({
+        title: `Node Selected: ${node.name}`,
+        description: `Type: ${node.type}${node.type === 'file' && node.content !== undefined ? `, Content Length: ${node.content.length}` : ''}`
+      });
+      // Future: if node.type === 'file', load its content into an editor view
+      // For now, if textContent is linked to a specific file, update textContent state here
+    }
+  }, [toast]);
 
 
   if (!mounted || !currentProject) {
@@ -218,9 +226,8 @@ export default function ProjectPage() {
   }
   
   return (
-    <div className="flex h-screen flex-col fixed inset-0 pt-16"> {/* Added pt-16 for global navbar */}
-       {/* Simplified Project-Specific Header */}
-       <header className="sticky top-16 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"> {/* Adjusted top */}
+    <div className="flex h-screen flex-col fixed inset-0 pt-16"> 
+       <header className="sticky top-16 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="container flex h-14 items-center px-4 sm:px-6 lg:px-8">
           <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2" aria-label="Back to dashboard">
             <ArrowLeft className="h-5 w-5" />
@@ -247,6 +254,17 @@ export default function ProjectPage() {
           </div>
 
           <div className="ml-auto flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setIsExplorerVisible(!isExplorerVisible)}
+              className="px-2"
+              aria-label="Toggle file explorer"
+            >
+              <FolderTree className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Explorer</span>
+            </Button>
+
             <div className="flex items-center gap-1 px-2 rounded-md border bg-muted">
               <Button variant={viewMode === 'editor' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('editor')} aria-label="Editor View">
                 <Edit3 className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Editor</span>
@@ -289,29 +307,46 @@ export default function ProjectPage() {
       </header>
       <main className="flex-1 overflow-hidden h-full">
         <ResizablePanelGroup direction="horizontal" className="h-full w-full">
-          <ResizablePanel defaultSize={100}>
+          {isExplorerVisible && (
+            <>
+              <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
+                <div className="h-full p-1 sm:p-2 md:p-3">
+                  <FileExplorer 
+                    nodes={fileSystemRoots}
+                    onNodeSelect={handleNodeSelectedInExplorer} 
+                  />
+                </div>
+              </ResizablePanel>
+              <ResizableHandle withHandle />
+            </>
+          )}
+          <ResizablePanel defaultSize={isExplorerVisible ? 80 : 100}>
             <ResizablePanelGroup direction="horizontal" className="h-full w-full">
               {(viewMode === "editor" || viewMode === "both") && (
-                <ResizablePanel defaultSize={viewMode === 'editor' ? 100 : 50} minSize={viewMode === 'both' ? 20 : 100}>
-                  <div className="h-full p-1 sm:p-2 md:p-3">
-                    <RichTextEditor 
-                      value={textContent} 
-                      onChange={handleTextChange}
-                    />
-                  </div>
+                <ResizablePanel defaultSize={viewMode === 'editor' ? 100 : (viewMode === 'both' ? 50 : 0)} minSize={viewMode === 'both' ? 20 : (viewMode === 'editor' ? 100 : 0)}>
+                  { (viewMode === 'editor' || viewMode === 'both') &&
+                    <div className="h-full p-1 sm:p-2 md:p-3">
+                      <RichTextEditor 
+                        value={textContent} 
+                        onChange={handleTextChange}
+                      />
+                    </div>
+                  }
                 </ResizablePanel>
               )}
               {viewMode === "both" && (
                  <ResizableHandle withHandle />
               )}
               {(viewMode === "whiteboard" || viewMode === "both") && (
-                <ResizablePanel defaultSize={viewMode === 'whiteboard' ? 100 : 50} minSize={viewMode === 'both' ? 20 : 100}>
-                   <div className="h-full p-1 sm:p-2 md:p-3">
-                    <Whiteboard
-                      initialData={whiteboardData}
-                      onChange={handleWhiteboardChange}
-                    />
-                  </div>
+                <ResizablePanel defaultSize={viewMode === 'whiteboard' ? 100 : (viewMode === 'both' ? 50 : 0)} minSize={viewMode === 'both' ? 20 : (viewMode === 'whiteboard' ? 100 : 0)}>
+                  { (viewMode === 'whiteboard' || viewMode === 'both') &&
+                     <div className="h-full p-1 sm:p-2 md:p-3">
+                      <Whiteboard
+                        initialData={whiteboardData}
+                        onChange={handleWhiteboardChange}
+                      />
+                    </div>
+                  }
                 </ResizablePanel>
               )}
             </ResizablePanelGroup>
@@ -326,7 +361,6 @@ export default function ProjectPage() {
         />
       )}
 
-      {/* New Item Dialog */}
       <Dialog open={isNewItemDialogOpen} onOpenChange={setIsNewItemDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
