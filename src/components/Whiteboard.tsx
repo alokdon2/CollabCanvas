@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, memo } from "react"; // Added memo
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types/types";
 import type { ExcalidrawElement, AppState, BinaryFiles } from "@excalidraw/excalidraw/types/element/types";
 import type { WhiteboardData } from "@/lib/types";
@@ -36,15 +36,16 @@ const DynamicallyLoadedExcalidraw = dynamic(
 
 const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = {
   elements: [],
-  appState: { ZenModeEnabled: false, viewModeEnabled: false }, // Ensure some defaults
+  appState: { ZenModeEnabled: false, viewModeEnabled: false },
   files: {}
 };
 
-export function Whiteboard({ 
+// Renamed to allow memoization
+const WhiteboardComponent = ({ 
   initialData,
   onChange,
   isReadOnly = false 
-}: WhiteboardProps) {
+}: WhiteboardProps) => {
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const [isClient, setIsClient] = useState(false);
   const { theme: appTheme } = useTheme();
@@ -54,25 +55,22 @@ export function Whiteboard({
   }, []);
 
   useEffect(() => {
-    if (excalidrawAPIRef.current) {
-      const dataToLoad = initialData || DEFAULT_EMPTY_WHITEBOARD_DATA;
-      excalidrawAPIRef.current.updateScene({
-        elements: dataToLoad.elements,
-        appState: { 
-            ...(dataToLoad.appState || {}), 
-            // Explicitly ensure viewBackgroundColor is not set here if we want theme prop to control it
-            // However, Excalidraw's theme prop might not always override viewBackgroundColor if present in appState
-            // For safety, let's ensure viewBackgroundColor is undefined unless explicitly in initialData.appState
-            viewBackgroundColor: dataToLoad.appState?.viewBackgroundColor 
-        },
-        files: dataToLoad.files,
-      });
-      // If switching to readOnly mode, ensure Excalidraw's internal state reflects it
-      if (isReadOnly !== excalidrawAPIRef.current.getAppState().viewModeEnabled) {
-          excalidrawAPIRef.current.updateScene({ appState: { viewModeEnabled: isReadOnly } });
+    const api = excalidrawAPIRef.current;
+    if (api) {
+      // Handle isReadOnly changes directly affecting viewModeEnabled
+      const currentAppState = api.getAppState();
+      if (currentAppState.viewModeEnabled !== isReadOnly) {
+        api.updateScene({ appState: { ...currentAppState, viewModeEnabled: isReadOnly } });
+      }
+
+      // Handle theme changes
+      const currentExcalidrawTheme = currentAppState.theme || 'light';
+      const targetExcalidrawTheme = appTheme === 'dark' ? 'dark' : 'light';
+      if (currentExcalidrawTheme !== targetExcalidrawTheme) {
+        api.setTheme(targetExcalidrawTheme);
       }
     }
-  }, [initialData, isReadOnly, appTheme]); // Rerun if initialData, isReadOnly or appTheme changes
+  }, [isReadOnly, appTheme]); // Effect only for imperative changes not covered by props
 
   const handleExcalidrawChange = useCallback(
     (
@@ -84,7 +82,7 @@ export function Whiteboard({
         onChange({ elements, appState, files });
       }
     },
-    [onChange]
+    [onChange] // Depends on the stability of onChange prop from parent
   );
 
   if (!isClient) {
@@ -96,20 +94,18 @@ export function Whiteboard({
     );
   }
   
-  // For the very first render, Excalidraw needs some initialData.
-  // The useEffect above will handle subsequent updates.
-  const excalidrawRenderInitialData = initialData || DEFAULT_EMPTY_WHITEBOARD_DATA;
-
   return (
     <div className="h-full w-full rounded-lg border bg-card text-card-foreground shadow-sm excalidraw-wrapper">
       <DynamicallyLoadedExcalidraw
         excalidrawAPI={(api) => (excalidrawAPIRef.current = api)}
-        initialData={excalidrawRenderInitialData}
+        initialData={initialData || DEFAULT_EMPTY_WHITEBOARD_DATA} // Excalidraw handles changes to this prop
         onChange={handleExcalidrawChange}
-        viewModeEnabled={isReadOnly} 
+        viewModeEnabled={isReadOnly} // Directly pass isReadOnly
         uiOptions={{ canvasActions: { toggleMenu: false } }}
         theme={appTheme === 'dark' ? 'dark' : 'light'}
       />
     </div>
   );
-}
+};
+
+export const Whiteboard = memo(WhiteboardComponent); // Export the memoized component
