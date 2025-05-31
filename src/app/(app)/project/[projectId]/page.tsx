@@ -158,6 +158,7 @@ export default function ProjectPage() {
   
   const handleSelectNode = (nodeId: string, type: 'file' | 'folder') => {
     console.log(`Selected ${type}: ${nodeId}`);
+    // Future: Load file content into an editor or display folder details
   };
 
 
@@ -186,49 +187,55 @@ export default function ProjectPage() {
           <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2" aria-label="Back to dashboard">
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          {isEditingName ? (
-            <Input 
-              value={editingProjectName}
-              onChange={(e) => setEditingProjectName(e.target.value)}
-              onBlur={handleNameEditToggle}
-              onKeyDown={(e) => e.key === 'Enter' && handleNameEditToggle()}
-              className="h-9 text-lg font-semibold max-w-xs"
-              autoFocus
-            />
-          ) : (
-            <h1 className="text-lg font-semibold truncate max-w-[200px] sm:max-w-xs cursor-pointer hover:underline" onClick={handleNameEditToggle}>
-              {editingProjectName}
-            </h1>
-          )}
-          <Button variant="ghost" size="icon" onClick={handleNameEditToggle} className="ml-1" aria-label="Edit project name">
-            {isEditingName ? <Check className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
-          </Button>
-
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setIsExplorerVisible(!isExplorerVisible)} 
-            className="ml-4"
-            aria-label={isExplorerVisible ? "Hide File Explorer" : "Show File Explorer"}
-            title={isExplorerVisible ? "Hide File Explorer" : "Show File Explorer"}
-          >
-            <FolderOpen className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">Explorer</span>
-          </Button>
-
-          <div className="mx-auto flex items-center gap-1 px-2 rounded-md border bg-muted">
-            <Button variant={viewMode === 'editor' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('editor')} aria-label="Editor View">
-              <Edit3 className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Editor</span>
-            </Button>
-            <Button variant={viewMode === 'both' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('both')} aria-label="Split View">
-               <Rows className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Both</span>
-            </Button>
-            <Button variant={viewMode === 'whiteboard' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('whiteboard')} aria-label="Whiteboard View">
-              <LayoutDashboard className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Board</span>
+          
+          <div className="flex items-center">
+            {isEditingName ? (
+              <Input 
+                value={editingProjectName}
+                onChange={(e) => setEditingProjectName(e.target.value)}
+                onBlur={handleNameEditToggle}
+                onKeyDown={(e) => e.key === 'Enter' && handleNameEditToggle()}
+                className="h-9 text-lg font-semibold max-w-[150px] sm:max-w-xs"
+                autoFocus
+              />
+            ) : (
+              <h1 className="text-lg font-semibold truncate max-w-[150px] sm:max-w-xs cursor-pointer hover:underline" onClick={handleNameEditToggle}>
+                {editingProjectName}
+              </h1>
+            )}
+            <Button variant="ghost" size="icon" onClick={handleNameEditToggle} className="ml-1" aria-label="Edit project name">
+              {isEditingName ? <Check className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
             </Button>
           </div>
 
-          <div className="flex flex-1 items-center justify-end space-x-2">
+          <div className="flex-grow"></div> {/* Spacer */}
+
+          <div className="flex items-center gap-2 mx-2"> {/* Group for Explorer and View Mode Toggles */}
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setIsExplorerVisible(!isExplorerVisible)} 
+              aria-label={isExplorerVisible ? "Hide File Explorer" : "Show File Explorer"}
+              title={isExplorerVisible ? "Hide File Explorer" : "Show File Explorer"}
+            >
+              <FolderOpen className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Explorer</span>
+            </Button>
+
+            <div className="flex items-center gap-1 px-2 rounded-md border bg-muted">
+              <Button variant={viewMode === 'editor' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('editor')} aria-label="Editor View">
+                <Edit3 className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Editor</span>
+              </Button>
+              <Button variant={viewMode === 'both' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('both')} aria-label="Split View">
+                 <Rows className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Both</span>
+              </Button>
+              <Button variant={viewMode === 'whiteboard' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('whiteboard')} aria-label="Whiteboard View">
+                <LayoutDashboard className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Board</span>
+              </Button>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-2"> {/* Group for Share and Delete */}
             <Button variant="outline" onClick={() => setIsShareDialogOpen(true)}>
               <Share2 className="mr-2 h-4 w-4" /> Share
             </Button>
@@ -313,3 +320,4 @@ export default function ProjectPage() {
     </div>
   );
 }
+
