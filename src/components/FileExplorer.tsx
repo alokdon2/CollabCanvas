@@ -8,11 +8,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface FileExplorerProps {
   nodes: FileSystemNode[];
-  onNodeSelect?: (node: FileSystemNode | null) => void; // Can be null if clearing selection
+  onNodeSelect?: (node: FileSystemNode | null) => void; 
   onDeleteNode: (nodeId: string) => void; 
   onAddFileToFolder: (folderId: string | null) => void; 
   onAddFolderToFolder: (folderId: string | null) => void;
-  selectedNodeId: string | null; // To manage selected state from parent
+  selectedNodeId: string | null; 
+  onMoveNode: (draggedNodeId: string, targetFolderId: string | null) => void; // New prop
 }
 
 export function FileExplorer({ 
@@ -21,10 +22,10 @@ export function FileExplorer({
     onDeleteNode,
     onAddFileToFolder,
     onAddFolderToFolder,
-    selectedNodeId
+    selectedNodeId,
+    onMoveNode, // New prop
 }: FileExplorerProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  // selectedNodeId is now managed by the parent (ProjectPage)
 
   const handleToggleExpand = useCallback((nodeId: string) => {
     setExpandedFolders((prev) => {
@@ -40,9 +41,28 @@ export function FileExplorer({
 
   const handleNodeClick = useCallback((node: FileSystemNode) => {
     if (onNodeSelect) {
-      onNodeSelect(node); // Pass the full node up
+      onNodeSelect(node); 
     }
   }, [onNodeSelect]);
+
+  const handleRootDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    // Check if the event target is the root div itself, not a child FileNodeItem
+    // This simple check might not be robust enough for complex nested elements.
+    if (event.target === event.currentTarget) { 
+      const draggedNodeId = event.dataTransfer.getData("application/node-id");
+      if (draggedNodeId) {
+        onMoveNode(draggedNodeId, null); // null targetFolderId for root
+      }
+    }
+    // Reset any global drag over styles if needed here
+  };
+
+  const handleRootDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault(); // Necessary to allow dropping
+    event.dataTransfer.dropEffect = "move";
+    // Add visual cue for root drop target if desired (e.g., change background of this div)
+  };
 
   const renderNodes = (nodesToRender: FileSystemNode[], level: number) => {
     return nodesToRender.map((node) => (
@@ -51,18 +71,23 @@ export function FileExplorer({
         node={node}
         level={level}
         onToggleExpand={handleToggleExpand}
-        onNodeClick={handleNodeClick} // This will pass the full node to the handler
+        onNodeClick={handleNodeClick} 
         expandedFoldersInExplorer={expandedFolders}
-        selectedNodeIdInExplorer={selectedNodeId} // Use prop for selected state
+        selectedNodeIdInExplorer={selectedNodeId}
         onDeleteNode={onDeleteNode}
         onAddFileToFolder={onAddFileToFolder}
         onAddFolderToFolder={onAddFolderToFolder}
+        onMoveNode={onMoveNode} // Pass down
       />
     ));
   };
 
   return (
-    <div className="h-full w-full flex flex-col bg-card text-card-foreground rounded-lg border shadow-sm p-2">
+    <div 
+      className="h-full w-full flex flex-col bg-card text-card-foreground rounded-lg border shadow-sm p-2"
+      onDrop={handleRootDrop}
+      onDragOver={handleRootDragOver}
+    >
       <ScrollArea className="flex-grow">
         <div className="space-y-0.5">
           {nodes.length > 0 ? (

@@ -49,21 +49,6 @@ const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = {
   files: {}
 };
 
-const deleteNodeFromTree = (
-  nodes: FileSystemNode[],
-  nodeId: string
-): FileSystemNode[] => {
-  return nodes.filter(node => {
-    if (node.id === nodeId) {
-      return false;
-    }
-    if (node.children && node.children.length > 0) {
-      node.children = deleteNodeFromTree(node.children, nodeId);
-    }
-    return true;
-  });
-};
-
 const updateNodeInTreeRecursive = (
   nodes: FileSystemNode[],
   nodeId: string,
@@ -83,6 +68,94 @@ const updateNodeInTreeRecursive = (
     }
     if (node.children) {
       return { ...node, children: updateNodeInTreeRecursive(node.children, nodeId, newContent) };
+    }
+    return node;
+  });
+};
+
+const deleteNodeFromTreeRecursive = (
+  nodes: FileSystemNode[],
+  nodeId: string
+): FileSystemNode[] => {
+  return nodes.filter(node => {
+    if (node.id === nodeId) {
+      return false;
+    }
+    if (node.children && node.children.length > 0) {
+      node.children = deleteNodeFromTreeRecursive(node.children, nodeId);
+    }
+    return true;
+  });
+};
+
+const addNodeToTreeRecursive = (
+  nodes: FileSystemNode[],
+  parentId: string | null,
+  newNode: FileSystemNode
+): FileSystemNode[] => {
+  if (parentId === null) { // Add to root
+    return [...nodes, newNode];
+  }
+  return nodes.map(node => {
+    if (node.id === parentId && node.type === 'folder') {
+      return { ...node, children: [...(node.children || []), newNode] };
+    }
+    if (node.children) {
+      return { ...node, children: addNodeToTreeRecursive(node.children, parentId, newNode) };
+    }
+    return node;
+  });
+};
+
+const findNodeByIdRecursive = (nodes: FileSystemNode[], nodeId: string): FileSystemNode | null => {
+  for (const node of nodes) {
+      if (node.id === nodeId) return node;
+      if (node.children) {
+          const found = findNodeByIdRecursive(node.children, nodeId);
+          if (found) return found;
+      }
+  }
+  return null;
+};
+
+// Helper for drag and drop
+const removeNodeFromTree = (
+  nodes: FileSystemNode[],
+  nodeId: string
+): { removedNode: FileSystemNode | null; newTree: FileSystemNode[] } => {
+  let removedNode: FileSystemNode | null = null;
+  const filterRecursive = (nodesArray: FileSystemNode[]): FileSystemNode[] => {
+    return nodesArray.reduce((acc, node) => {
+      if (node.id === nodeId) {
+        removedNode = node;
+        return acc;
+      }
+      const newNode = { ...node };
+      if (newNode.children) {
+        newNode.children = filterRecursive(newNode.children);
+      }
+      acc.push(newNode);
+      return acc;
+    }, [] as FileSystemNode[]);
+  };
+  const newTree = filterRecursive([...nodes]);
+  return { removedNode, newTree };
+};
+
+const addNodeToTargetInTree = (
+  nodes: FileSystemNode[],
+  targetFolderId: string | null,
+  nodeToAdd: FileSystemNode
+): FileSystemNode[] => {
+  if (targetFolderId === null) {
+    return [...nodes, nodeToAdd];
+  }
+  return nodes.map(node => {
+    if (node.id === targetFolderId && node.type === 'folder') {
+      return { ...node, children: [...(node.children || []), nodeToAdd] };
+    }
+    if (node.children) {
+      return { ...node, children: addNodeToTargetInTree(node.children, targetFolderId, nodeToAdd) };
     }
     return node;
   });
@@ -188,11 +261,8 @@ export default function ProjectPage() {
       if (projectToSave.name !== currentProjectNameFromContext) {
         setCurrentProjectName(projectToSave.name);
       }
-      // console.log("Project saved:", projectToSave.name, projectToSave.updatedAt);
-      // toast({ title: "Progress Saved", description: "Your changes have been saved.", duration: 2000});
     } catch (error) {
       console.error("Failed to save project:", error);
-      // toast({ title: "Save Error", description: `Could not save: ${(error as Error).message}`, variant: "destructive"});
     }
   }, [currentProjectNameFromContext, setCurrentProjectName]);
 
@@ -233,7 +303,7 @@ export default function ProjectPage() {
   }, [
     projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots, 
     editingProjectName, 
-    mounted, isLoadingProject, currentProject,
+    mounted, isLoadingProject, currentProject, // currentProject.id, currentProject.createdAt, currentProject.name are stable parts of currentProject
     performSave
   ]);
 
@@ -247,12 +317,11 @@ export default function ProjectPage() {
     } else {
       setProjectRootTextContent(newText); 
     }
-  }, [selectedFileNodeId, setActiveFileSystemRoots, setProjectRootTextContent]); 
+  }, [selectedFileNodeId]); 
   
   const handleWhiteboardChange = useCallback((newData: WhiteboardData) => {
     if (JSON.stringify(newData.elements) !== JSON.stringify(activeWhiteboardDataRef.current?.elements || []) ||
         newData.appState?.viewBackgroundColor !== activeWhiteboardDataRef.current?.appState?.viewBackgroundColor) {
-          
         setActiveWhiteboardData(newData); 
         if (selectedFileNodeId) {
             setActiveFileSystemRoots(prevRoots => 
@@ -262,7 +331,7 @@ export default function ProjectPage() {
             setProjectRootWhiteboardData(newData); 
         }
     }
-  }, [selectedFileNodeId, setActiveFileSystemRoots, setProjectRootWhiteboardData]); 
+  }, [selectedFileNodeId]); 
   
   const handleNameEditToggle = useCallback(async () => {
     if (isEditingName && currentProject) {
@@ -305,20 +374,6 @@ export default function ProjectPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProject, router, toast]);
 
-  const addNodeToTreeRecursive = (nodes: FileSystemNode[], parentId: string | null, newNode: FileSystemNode): FileSystemNode[] => {
-    if (parentId === null) {
-      return [...nodes, newNode];
-    }
-    return nodes.map(node => {
-      if (node.id === parentId && node.type === 'folder') {
-        return { ...node, children: [...(node.children || []), newNode] };
-      }
-      if (node.children) {
-        return { ...node, children: addNodeToTreeRecursive(node.children, parentId, newNode) };
-      }
-      return node;
-    });
-  };
 
   const handleOpenNewItemDialog = useCallback((type: 'file' | 'folder', parentNodeId: string | null) => {
     setNewItemType(type);
@@ -352,16 +407,6 @@ export default function ProjectPage() {
     setNewItemType(null);
   }, [newItemName, newItemType, parentIdForNewItem, toast]);
   
-  const findNodeByIdRecursive = (nodes: FileSystemNode[], nodeId: string): FileSystemNode | null => {
-    for (const node of nodes) {
-        if (node.id === nodeId) return node;
-        if (node.children) {
-            const found = findNodeByIdRecursive(node.children, nodeId);
-            if (found) return found;
-        }
-    }
-    return null;
-  };
 
   const handleNodeSelectedInExplorer = useCallback(async (selectedNode: FileSystemNode | null) => {
     if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
@@ -400,8 +445,7 @@ export default function ProjectPage() {
   }, [
     performSave, 
     projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots,
-    currentProject, editingProjectName, 
-    setActiveTextContent, setActiveWhiteboardData, setSelectedFileNodeId
+    currentProject, editingProjectName
   ]);
 
 
@@ -429,7 +473,7 @@ export default function ProjectPage() {
     }
 
     const nodeBeingDeleted = findNodeByIdRecursive(activeFileSystemRoots, nodeToDeleteId);
-    const newRoots = deleteNodeFromTree(activeFileSystemRoots, nodeToDeleteId);
+    const newRoots = deleteNodeFromTreeRecursive(activeFileSystemRoots, nodeToDeleteId);
     setActiveFileSystemRoots(newRoots); 
 
     if (selectedFileNodeId === nodeToDeleteId) {
@@ -442,8 +486,7 @@ export default function ProjectPage() {
     setNodeToDeleteId(null); 
   }, [
     nodeToDeleteId, selectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, 
-    toast, activeFileSystemRoots, performSave, currentProject, editingProjectName,
-    setActiveFileSystemRoots, setSelectedFileNodeId, setActiveTextContent, setActiveWhiteboardData
+    toast, activeFileSystemRoots, performSave, currentProject, editingProjectName
   ]);
 
 
@@ -454,6 +497,54 @@ export default function ProjectPage() {
   const onAddFolderToFolderCallback = useCallback((folderId: string | null) => {
     handleOpenNewItemDialog('folder', folderId);
   }, [handleOpenNewItemDialog]);
+
+  const handleMoveNode = useCallback((draggedNodeId: string, targetFolderId: string | null) => {
+    if (draggedNodeId === targetFolderId) {
+        toast({ title: "Invalid Move", description: "Cannot move an item into itself.", variant: "destructive" });
+        return;
+    }
+
+    setActiveFileSystemRoots(prevRoots => {
+      const { removedNode, newTree: treeWithoutDraggedNode } = removeNodeFromTree(prevRoots, draggedNodeId);
+
+      if (!removedNode) {
+        console.error("Dragged node not found during move operation.");
+        toast({ title: "Move Error", description: "Could not find the item to move.", variant: "destructive" });
+        return prevRoots;
+      }
+
+      // Prevent dragging a parent folder into one of its own children
+      if (targetFolderId && removedNode.type === 'folder') {
+        let currentParentId: string | null = targetFolderId;
+        while(currentParentId) {
+            if (currentParentId === draggedNodeId) {
+                toast({ title: "Invalid Move", description: "Cannot move a folder into one of its own subfolders.", variant: "destructive" });
+                return prevRoots;
+            }
+            const parentNode = findNodeByIdRecursive(prevRoots, currentParentId); // Check in original tree structure
+            // To find parent in the *original* tree to trace back:
+            let foundParentOfTarget: FileSystemNode | null = null;
+            const findParent = (nodes: FileSystemNode[], id: string, parent: FileSystemNode | null): FileSystemNode | null => {
+                for (const n of nodes) {
+                    if (n.id === id) return parent;
+                    if (n.children) {
+                        const p = findParent(n.children, id, n);
+                        if (p) return p;
+                    }
+                }
+                return null;
+            }
+            const parentOfCurrentTarget = findParent(prevRoots, currentParentId, null);
+            currentParentId = parentOfCurrentTarget ? parentOfCurrentTarget.id : null;
+        }
+      }
+      
+      const newRootsWithMovedNode = addNodeToTargetInTree(treeWithoutDraggedNode, targetFolderId, removedNode);
+      
+      toast({ title: "Item Moved", description: `"${removedNode.name}" moved.` });
+      return newRootsWithMovedNode;
+    });
+  }, [toast]);
 
 
   if (!mounted || isLoadingProject || !currentProject) {
@@ -569,6 +660,7 @@ export default function ProjectPage() {
                     onAddFileToFolder={onAddFileToFolderCallback}
                     onAddFolderToFolder={onAddFolderToFolderCallback}
                     selectedNodeId={selectedFileNodeId}
+                    onMoveNode={handleMoveNode}
                   />
                 </div>
               </ResizablePanel>
