@@ -76,6 +76,9 @@ export default function ProjectPage() {
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [isLoadingProject, setIsLoadingProject] = useState(true);
   
+  const [projectRootTextContent, setProjectRootTextContent] = useState(DEFAULT_EMPTY_TEXT_CONTENT);
+  const [projectRootWhiteboardData, setProjectRootWhiteboardData] = useState<WhiteboardData>(DEFAULT_EMPTY_WHITEBOARD_DATA);
+
   const [activeTextContent, setActiveTextContent] = useState(DEFAULT_EMPTY_TEXT_CONTENT);
   const [activeWhiteboardData, setActiveWhiteboardData] = useState<WhiteboardData>(DEFAULT_EMPTY_WHITEBOARD_DATA);
   const [activeFileSystemRoots, setActiveFileSystemRoots] = useState<FileSystemNode[]>([]); 
@@ -111,9 +114,16 @@ export default function ProjectPage() {
           setCurrentProject(projectData);
           setEditingProjectName(projectData.name);
           setCurrentProjectName(projectData.name);
+          
+          // Initialize root content states
+          const rootText = projectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT;
+          const rootBoard = projectData.whiteboardContent || DEFAULT_EMPTY_WHITEBOARD_DATA;
+          setProjectRootTextContent(rootText);
+          setProjectRootWhiteboardData(rootBoard);
+
           // Initialize active content to project root by default
-          setActiveTextContent(projectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
-          setActiveWhiteboardData(projectData.whiteboardContent || DEFAULT_EMPTY_WHITEBOARD_DATA);
+          setActiveTextContent(rootText);
+          setActiveWhiteboardData(rootBoard);
           setActiveFileSystemRoots(projectData.fileSystemRoots || []);
           setSelectedFileNodeId(null); // Ensure no file is selected initially
         } else {
@@ -142,12 +152,12 @@ export default function ProjectPage() {
 
   // Auto-save effect
   useEffect(() => {
-    if (!mounted || isLoadingProject || !currentProject) return; // currentProject used for stable ID/createdAt and initial guard
+    if (!mounted || isLoadingProject || !currentProject) return; 
 
     const projectDataToSave: Project = {
-      id: currentProject.id, // Assumes currentProject.id is stable after load
-      createdAt: currentProject.createdAt, // Assumes currentProject.createdAt is stable
-      name: editingProjectName || currentProject.name,
+      id: currentProject.id, 
+      createdAt: currentProject.createdAt, 
+      name: editingProjectName || currentProject.name, // Use current editing name or fallback
       fileSystemRoots: [...activeFileSystemRoots], 
       textContent: "", // Placeholder, will be correctly set below
       whiteboardContent: null, // Placeholder, will be correctly set below
@@ -155,9 +165,9 @@ export default function ProjectPage() {
     };
     
     if (selectedFileNodeId) {
-      // Save to selected file node
-      projectDataToSave.textContent = currentProject.textContent; // Preserve root text content
-      projectDataToSave.whiteboardContent = currentProject.whiteboardContent; // Preserve root whiteboard content
+      // Preserve root text content by reading from the dedicated root state
+      projectDataToSave.textContent = projectRootTextContent; 
+      projectDataToSave.whiteboardContent = projectRootWhiteboardData;
 
       const updateNodeContentRecursive = (nodes: FileSystemNode[]): FileSystemNode[] => {
         return nodes.map(node => {
@@ -176,10 +186,12 @@ export default function ProjectPage() {
       };
       projectDataToSave.fileSystemRoots = updateNodeContentRecursive(projectDataToSave.fileSystemRoots);
     } else {
-      // Save to project's root content
+      // Save to project's root content (which is now activeTextContent/activeWhiteboardData)
       projectDataToSave.textContent = activeTextContent;
       projectDataToSave.whiteboardContent = activeWhiteboardData;
-      // fileSystemRoots are already up-to-date from activeFileSystemRoots
+      // Also update the dedicated root content states if saving to root
+      setProjectRootTextContent(activeTextContent);
+      setProjectRootWhiteboardData(activeWhiteboardData);
     }
     
     pendingSaveDataRef.current = { project: projectDataToSave };
@@ -193,14 +205,11 @@ export default function ProjectPage() {
         const projectToActuallySave = pendingSaveDataRef.current.project;
         try {
           await dbSaveProject(projectToActuallySave);
-          // Update currentProject state to reflect the saved data.
-          // This is important for consistency if other parts of the UI depend on currentProject directly.
           setCurrentProject(projectToActuallySave); 
           
           if (editingProjectName && projectToActuallySave.name !== currentProjectNameFromContext) {
              setCurrentProjectName(projectToActuallySave.name);
           }
-          // toast({ title: "Project Saved", description: "Changes saved automatically."}); 
         } catch (error) {
           console.error("Failed to save project:", error);
           toast({ title: "Save Error", description: "Could not save project changes.", variant: "destructive"});
@@ -217,12 +226,13 @@ export default function ProjectPage() {
     };
   }, [
     activeTextContent, activeWhiteboardData, activeFileSystemRoots,
-    editingProjectName, selectedFileNodeId, // These are the primary data drivers
-    mounted, isLoadingProject, // Guards
-    setCurrentProjectName, // Context function (stable)
-    currentProjectNameFromContext, // Context value (stable for this effect's trigger)
-    toast // Toast function (stable)
-    // currentProject was removed from dependencies to break the loop
+    editingProjectName, selectedFileNodeId, 
+    mounted, isLoadingProject, 
+    setCurrentProjectName, 
+    currentProjectNameFromContext,
+    currentProject, // Added currentProject back as it holds id and createdAt, crucial for saving
+    projectRootTextContent, projectRootWhiteboardData, // for updating root content in save
+    toast // Toast for error reporting
   ]);
 
   const handleTextChange = useCallback((newText: string) => {
@@ -242,6 +252,7 @@ export default function ProjectPage() {
                 await dbSaveProject(updatedProject);
                 setCurrentProject(updatedProject); 
                 setCurrentProjectName(newName);    
+                setEditingProjectName(newName); // Ensure editingProjectName is also updated
                 toast({title: "Project Renamed", description: `Project name updated to "${newName}".`});
             } catch (error) {
                 toast({title: "Error", description: "Failed to update project name.", variant: "destructive"});
@@ -289,7 +300,7 @@ export default function ProjectPage() {
   };
 
   const handleCreateNewItem = () => {
-    if (!newItemName.trim() || !newItemType || !currentProject) {
+    if (!newItemName.trim() || !newItemType ) { // Removed currentProject check as it might not be set if creating first item
       setNewItemError(`Name cannot be empty.`);
       return;
     }
@@ -324,12 +335,11 @@ export default function ProjectPage() {
   };
 
   const handleNodeSelectedInExplorer = useCallback((nodeId: string | null) => {
-    if (!currentProject) return;
-
+    // No currentProject guard here, as root content states are independent
     setSelectedFileNodeId(nodeId);
 
-    let newTextContent = currentProject.textContent || DEFAULT_EMPTY_TEXT_CONTENT;
-    let newWhiteboardData: WhiteboardData = currentProject.whiteboardContent ? {...currentProject.whiteboardContent} : {...DEFAULT_EMPTY_WHITEBOARD_DATA};
+    let newTextContent = projectRootTextContent;
+    let newWhiteboardData: WhiteboardData = {...projectRootWhiteboardData};
 
     if (nodeId) {
         const selectedNode = findNodeByIdRecursive(activeFileSystemRoots, nodeId);
@@ -337,17 +347,21 @@ export default function ProjectPage() {
             newTextContent = selectedNode.textContent || DEFAULT_EMPTY_TEXT_CONTENT;
             newWhiteboardData = selectedNode.whiteboardContent ? {...selectedNode.whiteboardContent} : {...DEFAULT_EMPTY_WHITEBOARD_DATA};
         }
+        // If a folder is selected, we still show root content (already set as default)
     }
     
     setActiveTextContent(newTextContent);
     setActiveWhiteboardData(newWhiteboardData);
 
     const selectedNodeForToast = nodeId ? findNodeByIdRecursive(activeFileSystemRoots, nodeId) : null;
+    const toastTitle = selectedNodeForToast ? selectedNodeForToast.name : (currentProject?.name || "Project Root");
+    const toastDescription = selectedNodeForToast ? `Type: ${selectedNodeForToast.type}` : 'Project Root';
+    
     toast({
-        title: `Switched to: ${selectedNodeForToast ? selectedNodeForToast.name : currentProject.name}`,
-        description: selectedNodeForToast ? `Type: ${selectedNodeForToast.type}` : 'Project Root'
+        title: `Switched to: ${toastTitle}`,
+        description: toastDescription
     });
-  }, [currentProject, activeFileSystemRoots, toast, setActiveTextContent, setActiveWhiteboardData, setSelectedFileNodeId]);
+  }, [activeFileSystemRoots, setActiveTextContent, setActiveWhiteboardData, setSelectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, currentProject?.name, toast]);
 
 
   const handleDeleteNodeRequest = (nodeId: string) => {
@@ -355,22 +369,23 @@ export default function ProjectPage() {
   };
 
   const confirmDeleteNode = () => {
-    if (!nodeToDeleteId || !currentProject) return;
+    if (!nodeToDeleteId) return; // Removed currentProject check
 
     const newRoots = deleteNodeFromTree([...activeFileSystemRoots], nodeToDeleteId);
     setActiveFileSystemRoots(newRoots); 
 
     if (selectedFileNodeId === nodeToDeleteId) {
         setSelectedFileNodeId(null); 
-        setActiveTextContent(currentProject.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
-        setActiveWhiteboardData(currentProject.whiteboardContent ? {...currentProject.whiteboardContent} : {...DEFAULT_EMPTY_WHITEBOARD_DATA});
+        // When a selected node is deleted, revert to root content
+        setActiveTextContent(projectRootTextContent);
+        setActiveWhiteboardData({...projectRootWhiteboardData});
     }
     toast({ title: "Item Deleted", description: "File/folder has been removed." });
     setNodeToDeleteId(null); 
   };
 
 
-  if (!mounted || isLoadingProject || !currentProject) {
+  if (!mounted || isLoadingProject || !currentProject) { // Keep currentProject check for initial loading screen
     return (
       <div className="flex min-h-screen flex-col fixed inset-0 pt-14">
          <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -523,11 +538,13 @@ export default function ProjectPage() {
         </ResizablePanelGroup>
       </main>
       
-      <ShareProjectDialog
-        project={currentProject}
-        isOpen={isShareDialogOpen}
-        onOpenChange={setIsShareDialogOpen}
-      />
+      {currentProject && ( // Ensure currentProject is available for ShareDialog
+        <ShareProjectDialog
+          project={currentProject}
+          isOpen={isShareDialogOpen}
+          onOpenChange={setIsShareDialogOpen}
+        />
+      )}
 
       <Dialog open={isNewItemDialogOpen} onOpenChange={setIsNewItemDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
@@ -575,6 +592,8 @@ export default function ProjectPage() {
     </div>
   );
 }
+    
+
     
 
     
