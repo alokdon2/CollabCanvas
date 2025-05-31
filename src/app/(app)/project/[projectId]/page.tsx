@@ -150,7 +150,7 @@ export default function ProjectPage() {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, router, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder]); 
+  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder]); 
 
   useEffect(() => {
     activeWhiteboardDataRef.current = activeWhiteboardData;
@@ -202,11 +202,12 @@ export default function ProjectPage() {
         const projectToActuallySave = pendingSaveDataRef.current.project;
         try {
           await dbSaveProject(projectToActuallySave);
-          // Do not call setCurrentProject here for content changes.
-          // It's updated on load or explicit name changes (handleNameEditToggle).
+          
           if (projectToActuallySave.name !== currentProjectNameFromContext) {
             setCurrentProjectName(projectToActuallySave.name);
           }
+          // Do not call setCurrentProject here for routine content updates
+          // It is primarily updated on initial load or name changes.
           // toast({ title: "Progress Saved", description: "Your changes have been saved.", duration: 2000});
         } catch (error) {
           console.error("Failed to auto-save project:", error);
@@ -226,7 +227,7 @@ export default function ProjectPage() {
     activeTextContent, activeWhiteboardData, activeFileSystemRoots,
     editingProjectName, selectedFileNodeId, 
     projectRootTextContent, projectRootWhiteboardData, 
-    mounted, isLoadingProject, currentProject, 
+    mounted, isLoadingProject, currentProject, // currentProject is needed for its id and createdAt
     setCurrentProjectName, currentProjectNameFromContext
   ]);
 
@@ -259,11 +260,12 @@ export default function ProjectPage() {
           toast({title: "Error", description: "Failed to update project name.", variant: "destructive"});
           setEditingProjectName(currentProject.name); 
         }
-      } else if (currentProject) { // Ensure currentProject exists before accessing its name
+      } else if (currentProject) {
         setEditingProjectName(currentProject.name); 
       }
     }
     setIsEditingName(!isEditingName);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEditingName, currentProject, editingProjectName, setCurrentProjectName, toast]);
 
 
@@ -276,6 +278,7 @@ export default function ProjectPage() {
     } catch (error) {
       toast({ title: "Error", description: "Could not delete project.", variant: "destructive" });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProject, router, toast]);
 
   const addNodeToTreeRecursive = (nodes: FileSystemNode[], parentId: string | null, newNode: FileSystemNode): FileSystemNode[] => {
@@ -336,26 +339,27 @@ export default function ProjectPage() {
     return null;
   };
 
-  const handleNodeSelectedInExplorer = useCallback((nodeId: string | null) => {
+  const handleNodeSelectedInExplorer = useCallback((node: FileSystemNode | null) => {
+    const nodeId = node ? node.id : null;
     setSelectedFileNodeId(nodeId);
 
-    if (nodeId) {
-        const selectedNode = findNodeByIdRecursive(activeFileSystemRoots, nodeId);
-        if (selectedNode && selectedNode.type === 'file') {
-            setActiveTextContent(selectedNode.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
-            const newBoardData = selectedNode.whiteboardContent ? {...selectedNode.whiteboardContent} : {...DEFAULT_EMPTY_WHITEBOARD_DATA};
-            setActiveWhiteboardData(newBoardData);
-        } else if (selectedNode && selectedNode.type === 'folder') {
-            // When a folder is selected, revert to project root content
-            setActiveTextContent(projectRootTextContent);
-            setActiveWhiteboardData({...projectRootWhiteboardData});
-        }
-    } else {
-        // When nothing is selected (or project root selected), revert to project root content
+    if (node && node.type === 'file') {
+        setActiveTextContent(node.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
+        const newBoardData = node.whiteboardContent ? {...node.whiteboardContent} : {...DEFAULT_EMPTY_WHITEBOARD_DATA};
+        setActiveWhiteboardData(newBoardData);
+        // Optionally, you could toast here:
+        // toast({ title: "Switched to File", description: `Viewing "${node.name}"` });
+    } else if (node && node.type === 'folder') {
+        // When a folder is selected, revert to project root content (or show folder-specific view)
         setActiveTextContent(projectRootTextContent);
         setActiveWhiteboardData({...projectRootWhiteboardData});
+        // toast({ title: "Selected Folder", description: `Viewing folder "${node.name}" (showing project root content)` });
+    } else { // Node is null, meaning project root is selected
+        setActiveTextContent(projectRootTextContent);
+        setActiveWhiteboardData({...projectRootWhiteboardData});
+        // toast({ title: "Switched to Project Root", description: "Viewing project root content" });
     }
-  }, [activeFileSystemRoots, projectRootTextContent, projectRootWhiteboardData, setActiveTextContent, setActiveWhiteboardData, setSelectedFileNodeId]);
+  }, [projectRootTextContent, projectRootWhiteboardData, setActiveTextContent, setActiveWhiteboardData, setSelectedFileNodeId]);
 
 
   const handleDeleteNodeRequest = useCallback((nodeId: string) => {
@@ -365,6 +369,7 @@ export default function ProjectPage() {
   const confirmDeleteNode = useCallback(() => {
     if (!nodeToDeleteId) return;
 
+    const nodeBeingDeleted = findNodeByIdRecursive(activeFileSystemRoots, nodeToDeleteId);
     setActiveFileSystemRoots(prevRoots => deleteNodeFromTree(prevRoots, nodeToDeleteId));
 
     if (selectedFileNodeId === nodeToDeleteId) {
@@ -372,9 +377,10 @@ export default function ProjectPage() {
         setActiveTextContent(projectRootTextContent);
         setActiveWhiteboardData({...projectRootWhiteboardData});
     }
-    toast({ title: "Item Deleted", description: "File/folder has been removed." });
+    toast({ title: "Item Deleted", description: `"${nodeBeingDeleted?.name || 'Item'}" has been removed.` });
     setNodeToDeleteId(null); 
-  }, [nodeToDeleteId, selectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeToDeleteId, selectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, toast, activeFileSystemRoots]);
 
 
   const onAddFileToFolderCallback = useCallback((folderId: string | null) => {
@@ -604,3 +610,4 @@ export default function ProjectPage() {
   );
 }
     
+ 
