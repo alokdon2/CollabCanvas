@@ -7,7 +7,7 @@ import { ProjectCard } from "@/components/ProjectCard";
 import type { Project } from "@/lib/types";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutDashboard, FolderOpen, Loader2 } from "lucide-react"; 
+import { Search, LayoutDashboard, FolderOpen, Loader2 } from "lucide-react";
 import { dbGetAllProjects, dbSaveProject, dbDeleteProject, dbSaveAllProjects } from "@/lib/indexedDB";
 import { useToast } from "@/hooks/use-toast";
 
@@ -113,7 +113,7 @@ export default function DashboardPage() {
     setIsShareDialogOpen(true);
   };
 
-  const filteredProjects = projects.filter(project => 
+  const filteredProjects = projects.filter(project =>
     project.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -138,9 +138,9 @@ export default function DashboardPage() {
         <div className="flex items-center gap-4 w-full sm:w-auto">
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input 
-              type="search" 
-              placeholder="Search projects..." 
+            <Input
+              type="search"
+              placeholder="Search projects..."
               className="pl-10"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -153,9 +153,9 @@ export default function DashboardPage() {
       {filteredProjects.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredProjects.sort((a,b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).map((project) => (
-            <ProjectCard 
-              key={project.id} 
-              project={project} 
+            <ProjectCard
+              key={project.id}
+              project={project}
               onDeleteProject={handleDeleteProject}
               onShareProject={handleShareProject}
             />
@@ -169,7 +169,11 @@ export default function DashboardPage() {
             {searchTerm ? "Try a different search term or " : "Get started by "}
              creating a new project.
           </p>
-           {!searchTerm && <CreateProjectDialog onCreateProject={(newProjectData) => handleCreateProject(newProjectData as Omit<Project, 'id' | 'createdAt' | 'updatedAt'>)} />}
+           {!searchTerm && (
+            <div className="mt-4">
+              <CreateProjectDialog onCreateProject={(newProjectData) => handleCreateProject(newProjectData as Omit<Project, 'id' | 'createdAt' | 'updatedAt'>)} />
+            </div>
+           )}
         </div>
       )}
       {projectToShare && (
