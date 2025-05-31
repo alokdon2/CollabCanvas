@@ -7,7 +7,7 @@ import { RichTextEditor } from "@/components/RichTextEditor";
 import { Whiteboard } from "@/components/Whiteboard";
 import type { Project, WhiteboardData, FileSystemNode } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderTree, Loader2, PanelLeftOpen, PlusCircle, FilePlus2, FolderPlus } from "lucide-react"; // Added PlusCircle, FilePlus2, FolderPlus
+import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderTree, Loader2, PanelLeftOpen, PlusCircle, FilePlus2, FolderPlus } from "lucide-react";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,7 +24,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"; // Added DropdownMenu components
+} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -242,7 +242,6 @@ export default function ProjectPage() {
     }
     fetchProject();
     
-    // These registrations are still used by FileExplorer context menus via ProjectContext
     if (typeof registerTriggerNewFile === 'function') {
         registerTriggerNewFile(() => handleOpenNewItemDialog('file', null));
     }
@@ -255,7 +254,7 @@ export default function ProjectPage() {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder]); 
+  }, [projectId, router, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder]); 
 
   useEffect(() => {
     activeWhiteboardDataRef.current = activeWhiteboardData;
@@ -268,11 +267,12 @@ export default function ProjectPage() {
       if (projectToSave.name !== currentProjectNameFromContext) {
         setCurrentProjectName(projectToSave.name);
       }
+      toast({ title: "Progress Saved", description: "Your changes have been saved.", duration: 2000 });
     } catch (error) {
       console.error("Failed to save project:", error);
-      // Consider adding a toast here if needed
+      toast({ title: "Save Error", description: `Could not save project: ${(error as Error).message}`, variant: "destructive" });
     }
-  }, [currentProjectNameFromContext, setCurrentProjectName]);
+  }, [currentProjectNameFromContext, setCurrentProjectName, toast]);
 
 
   useEffect(() => {
@@ -367,7 +367,8 @@ export default function ProjectPage() {
       }
     }
     setIsEditingName(!isEditingName);
-  }, [isEditingName, currentProject, editingProjectName, setCurrentProjectName, toast, projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditingName, currentProject, editingProjectName, setCurrentProjectName, projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots]);
 
 
   const confirmDeleteProject = useCallback(async () => {
@@ -380,7 +381,7 @@ export default function ProjectPage() {
       toast({ title: "Error", description: "Could not delete project.", variant: "destructive" });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProject, router, toast]);
+  }, [currentProject, router]);
 
 
   const handleOpenNewItemDialog = useCallback((type: 'file' | 'folder', parentNodeId: string | null) => {
@@ -413,7 +414,8 @@ export default function ProjectPage() {
     toast({ title: `${newItemType === 'file' ? 'File' : 'Folder'} Created`, description: `"${newNode.name}" added.`});
     setIsNewItemDialogOpen(false);
     setNewItemType(null);
-  }, [newItemName, newItemType, parentIdForNewItem, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [newItemName, newItemType, parentIdForNewItem]);
   
 
   const handleNodeSelectedInExplorer = useCallback(async (selectedNode: FileSystemNode | null) => {
@@ -492,9 +494,10 @@ export default function ProjectPage() {
     }
     toast({ title: "Item Deleted", description: `"${nodeBeingDeleted?.name || 'Item'}" has been removed.` });
     setNodeToDeleteId(null); 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     nodeToDeleteId, selectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, 
-    toast, activeFileSystemRoots, performSave, currentProject, editingProjectName
+    activeFileSystemRoots, performSave, currentProject, editingProjectName
   ]);
 
 
@@ -551,14 +554,15 @@ export default function ProjectPage() {
       toast({ title: "Item Moved", description: `"${removedNode.name}" moved.` });
       return newRootsWithMovedNode;
     });
-  }, [toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   if (!mounted || isLoadingProject || !currentProject) {
     return (
-      <div className="flex min-h-screen flex-col fixed inset-0 pt-14">
+      <div className="flex min-h-screen flex-col fixed inset-0 pt-16">
          <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="container flex h-14 items-center px-4 sm:px-6 lg:px-8">
+            <div className="container flex h-16 items-center px-4 sm:px-6 lg:px-8">
                 <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2">
                     <ArrowLeft className="h-5 w-5" />
                 </Button>
@@ -575,9 +579,9 @@ export default function ProjectPage() {
   }
   
   return (
-    <div className="flex h-screen flex-col fixed inset-0 pt-14"> 
+    <div className="flex h-screen flex-col fixed inset-0 pt-16"> 
        <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 items-center px-4 sm:px-6 lg:px-8">
+        <div className="container flex h-16 items-center px-4 sm:px-6 lg:px-8">
           <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2" aria-label="Back to dashboard">
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -797,3 +801,6 @@ export default function ProjectPage() {
     </div>
   );
 }
+
+
+    
