@@ -63,7 +63,7 @@ const updateNodeInTreeRecursive = (
   return nodes.map(node => {
     if (node.id === nodeId && node.type === 'file') {
       // Create a new node object with updated content
-      const updatedNode = { ...node, ...newContent }; // Simplified update
+      const updatedNode = { ...node, ...newContent }; 
       return updatedNode;
     }
     if (node.children) {
@@ -118,7 +118,6 @@ const findNodeByIdRecursive = (nodes: FileSystemNode[], nodeId: string): FileSys
   return null;
 };
 
-// Helper for drag and drop
 const removeNodeFromTree = (
   nodes: FileSystemNode[],
   nodeId: string
@@ -218,8 +217,8 @@ export default function ProjectPage() {
           setProjectRootWhiteboardData(rootBoard);
           
           setActiveTextContent(rootText); 
-          setActiveWhiteboardData(rootBoard);
-          activeWhiteboardDataRef.current = rootBoard;
+          setActiveWhiteboardData({...rootBoard}); // Ensure new object reference
+          activeWhiteboardDataRef.current = {...rootBoard}; // Keep ref in sync
           setActiveFileSystemRoots(projectData.fileSystemRoots || []);
           setSelectedFileNodeId(null); 
         } else {
@@ -247,8 +246,7 @@ export default function ProjectPage() {
       setCurrentProjectName(null);
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, router, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder]); 
+  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder]); 
 
   useEffect(() => {
     activeWhiteboardDataRef.current = activeWhiteboardData;
@@ -277,9 +275,9 @@ export default function ProjectPage() {
         id: currentProject.id,
         createdAt: currentProject.createdAt,
         name: editingProjectName || currentProject.name,
-        fileSystemRoots: [...activeFileSystemRoots],
-        textContent: projectRootTextContent,
-        whiteboardContent: projectRootWhiteboardData,
+        fileSystemRoots: [...activeFileSystemRoots], 
+        textContent: projectRootTextContent, 
+        whiteboardContent: projectRootWhiteboardData, 
         updatedAt: new Date().toISOString(),
       };
     };
@@ -309,7 +307,6 @@ export default function ProjectPage() {
     performSave
   ]);
 
-
   const handleTextChange = useCallback((newText: string) => {
     setActiveTextContent(newText); 
     if (selectedFileNodeId) {
@@ -319,12 +316,18 @@ export default function ProjectPage() {
     } else {
       setProjectRootTextContent(newText); 
     }
-  }, [selectedFileNodeId]); 
+  }, [selectedFileNodeId, setActiveFileSystemRoots, setProjectRootTextContent]); 
   
   const handleWhiteboardChange = useCallback((newData: WhiteboardData) => {
-    if (JSON.stringify(newData.elements) !== JSON.stringify(activeWhiteboardDataRef.current?.elements || []) ||
-        newData.appState?.viewBackgroundColor !== activeWhiteboardDataRef.current?.appState?.viewBackgroundColor) {
+    const oldElementsString = JSON.stringify(activeWhiteboardDataRef.current?.elements || []);
+    const newElementsString = JSON.stringify(newData.elements || []);
+
+    if (newElementsString !== oldElementsString || 
+        newData.appState?.viewBackgroundColor !== activeWhiteboardDataRef.current?.appState?.viewBackgroundColor
+       ) {
+        
         setActiveWhiteboardData(newData); 
+
         if (selectedFileNodeId) {
             setActiveFileSystemRoots(prevRoots => 
               updateNodeInTreeRecursive(prevRoots, selectedFileNodeId, { whiteboardContent: newData })
@@ -333,7 +336,7 @@ export default function ProjectPage() {
             setProjectRootWhiteboardData(newData); 
         }
     }
-  }, [selectedFileNodeId]); 
+  }, [selectedFileNodeId, setActiveFileSystemRoots, setProjectRootWhiteboardData]); 
   
   const handleNameEditToggle = useCallback(async () => {
     if (isEditingName && currentProject) {
@@ -361,8 +364,7 @@ export default function ProjectPage() {
       }
     }
     setIsEditingName(!isEditingName);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditingName, currentProject, editingProjectName, setCurrentProjectName, toast, projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots]);
+  }, [isEditingName, currentProject, editingProjectName, setCurrentProjectName, toast, projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots, performSave]);
 
 
   const confirmDeleteProject = useCallback(async () => {
@@ -374,7 +376,6 @@ export default function ProjectPage() {
     } catch (error) {
       toast({ title: "Error", description: "Could not delete project.", variant: "destructive" });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentProject, router, toast]);
 
 
@@ -408,8 +409,7 @@ export default function ProjectPage() {
     toast({ title: `${newItemType === 'file' ? 'File' : 'Folder'} Created`, description: `"${newNode.name}" added.`});
     setIsNewItemDialogOpen(false);
     setNewItemType(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newItemName, newItemType, parentIdForNewItem, toast]);
+  }, [newItemName, newItemType, parentIdForNewItem, toast, setActiveFileSystemRoots]);
   
 
   const handleNodeSelectedInExplorer = useCallback(async (selectedNode: FileSystemNode | null) => {
@@ -449,7 +449,8 @@ export default function ProjectPage() {
   }, [
     performSave, 
     projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots,
-    currentProject, editingProjectName
+    currentProject, editingProjectName,
+    setActiveTextContent, setActiveWhiteboardData, setSelectedFileNodeId
   ]);
 
 
@@ -488,10 +489,10 @@ export default function ProjectPage() {
     }
     toast({ title: "Item Deleted", description: `"${nodeBeingDeleted?.name || 'Item'}" has been removed.` });
     setNodeToDeleteId(null); 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     nodeToDeleteId, selectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, 
-    activeFileSystemRoots, performSave, currentProject, editingProjectName, toast
+    activeFileSystemRoots, performSave, currentProject, editingProjectName, toast,
+    setActiveTextContent, setActiveWhiteboardData, setSelectedFileNodeId, setActiveFileSystemRoots
   ]);
 
 
@@ -518,7 +519,6 @@ export default function ProjectPage() {
         return prevRoots;
       }
 
-      // Prevent dragging a parent folder into one of its own children
       if (targetFolderId && removedNode.type === 'folder') {
         let currentParentId: string | null = targetFolderId;
         while(currentParentId) {
@@ -526,7 +526,6 @@ export default function ProjectPage() {
                 toast({ title: "Invalid Move", description: "Cannot move a folder into one of its own subfolders.", variant: "destructive" });
                 return prevRoots;
             }
-            // To find parent in the *original* tree to trace back:
             let foundParentOfTarget: FileSystemNode | null = null;
             const findParent = (nodes: FileSystemNode[], id: string, parent: FileSystemNode | null): FileSystemNode | null => {
                 for (const n of nodes) {
@@ -548,15 +547,14 @@ export default function ProjectPage() {
       toast({ title: "Item Moved", description: `"${removedNode.name}" moved.` });
       return newRootsWithMovedNode;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast]);
+  }, [toast, setActiveFileSystemRoots]);
 
 
   if (!mounted || isLoadingProject || !currentProject) {
     return (
-      <div className="flex min-h-screen flex-col fixed inset-0 pt-14"> {/* Changed pt-16 to pt-14 */}
+      <div className="flex min-h-screen flex-col fixed inset-0 pt-14"> 
          <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="container flex h-14 items-center px-4 sm:px-6 lg:px-8"> {/* Changed h-16 to h-14 */}
+            <div className="container flex h-14 items-center px-4 sm:px-6 lg:px-8"> 
                 <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2">
                     <ArrowLeft className="h-5 w-5" />
                 </Button>
@@ -573,9 +571,9 @@ export default function ProjectPage() {
   }
   
   return (
-    <div className="flex h-screen flex-col fixed inset-0 pt-14">  {/* Changed pt-16 to pt-14 */}
+    <div className="flex h-screen flex-col fixed inset-0 pt-14">  
        <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-14 items-center px-4 sm:px-6 lg:px-8"> {/* Changed h-16 to h-14 */}
+        <div className="container flex h-14 items-center px-4 sm:px-6 lg:px-8"> 
           <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2" aria-label="Back to dashboard">
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -703,6 +701,7 @@ export default function ProjectPage() {
             {viewMode === "whiteboard" && (
               <div className="h-full p-1 sm:p-2 md:p-3">
                 <Whiteboard
+                  key={selectedFileNodeId || 'project-root-whiteboard'}
                   initialData={activeWhiteboardData}
                   onChange={handleWhiteboardChange}
                   isReadOnly={false} 
@@ -723,6 +722,7 @@ export default function ProjectPage() {
                 <ResizablePanel defaultSize={50} minSize={20}>
                   <div className="h-full p-1 sm:p-2 md:p-3">
                     <Whiteboard
+                      key={selectedFileNodeId || 'project-root-whiteboard-both'}
                       initialData={activeWhiteboardData}
                       onChange={handleWhiteboardChange}
                       isReadOnly={false}
@@ -795,6 +795,5 @@ export default function ProjectPage() {
     </div>
   );
 }
-
 
     
