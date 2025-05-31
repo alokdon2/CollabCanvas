@@ -3,7 +3,7 @@
  * @fileOverview Service for real-time collaboration using Firebase Firestore.
  */
 import { db } from '@/lib/firebase';
-import type { Project, FileSystemNode, WhiteboardData } from '@/lib/types';
+import type { Project, FileSystemNode, WhiteboardData, ExcalidrawAppState } from '@/lib/types';
 import { 
   doc, 
   getDoc, 
@@ -14,7 +14,7 @@ import {
   deleteDoc, 
   query, 
   orderBy,
-  serverTimestamp, // Can be used if storing native Firestore timestamps
+  // serverTimestamp, // Can be used if storing native Firestore timestamps
   Timestamp
 } from 'firebase/firestore';
 
@@ -30,6 +30,26 @@ const convertTimestamps = (data: any): any => {
         convertTimestamps(data[key]); // Recurse for nested objects
       }
     }
+  }
+  return data;
+};
+
+// Helper to sanitize data for Firestore (e.g., convert Maps to Objects)
+const sanitizeDataForFirestore = (data: any): any => {
+  if (data instanceof Map) {
+    return Object.fromEntries(data);
+  }
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeDataForFirestore(item));
+  }
+  if (data && typeof data === 'object' && !(data instanceof Timestamp) && !(data instanceof Date) ) {
+    const sanitizedObject: { [key: string]: any } = {};
+    for (const key in data) {
+      if (Object.prototype.hasOwnProperty.call(data, key)) {
+        sanitizedObject[key] = sanitizeDataForFirestore(data[key]);
+      }
+    }
+    return sanitizedObject;
   }
   return data;
 };
@@ -67,12 +87,29 @@ export async function loadProjectData(projectId: string): Promise<Project | null
 export async function saveProjectData(project: Project): Promise<void> {
   console.log(`[FirestoreService] Saving project: ${project.id}`);
   try {
-    const projectToSave = {
-      ...project,
+    // Deep clone and sanitize project data before saving
+    const projectToSave = JSON.parse(JSON.stringify(project)); // Simple deep clone for POJOs
+
+    // Specifically handle whiteboardContent.appState.collaborators if it's a Map
+    if (projectToSave.whiteboardContent && projectToSave.whiteboardContent.appState && project.whiteboardContent?.appState?.collaborators instanceof Map) {
+      // If collaborators is a Map in the original project, convert it to an object for Firestore
+      projectToSave.whiteboardContent.appState.collaborators = Object.fromEntries(project.whiteboardContent.appState.collaborators);
+    } else if (projectToSave.whiteboardContent && projectToSave.whiteboardContent.appState && projectToSave.whiteboardContent.appState.collaborators && typeof projectToSave.whiteboardContent.appState.collaborators === 'object' && !(projectToSave.whiteboardContent.appState.collaborators instanceof Map) ) {
+        // It's already an object (likely from JSON.parse or previous sanitization), so it's fine.
+    } else if (projectToSave.whiteboardContent && projectToSave.whiteboardContent.appState) {
+      // If collaborators field is not a Map or a plain object (e.g. null, undefined), ensure it's not problematic for Firestore
+      // Setting to null or deleting is an option if it's not needed for persistence.
+      // For Excalidraw, if you don't manage collaborators this way, it's often safe to remove/nullify
+       delete projectToSave.whiteboardContent.appState.collaborators;
+    }
+    
+    const finalProjectToSave = {
+      ...sanitizeDataForFirestore(projectToSave), // General sanitization
       updatedAt: new Date().toISOString(), // Ensure updatedAt is current
     };
+    
     const projectDocRef = doc(db, PROJECTS_COLLECTION, project.id);
-    await setDoc(projectDocRef, projectToSave, { merge: true }); // Use merge to allow partial updates if needed
+    await setDoc(projectDocRef, finalProjectToSave, { merge: true }); 
     console.log(`[FirestoreService] Project ${project.id} saved.`);
   } catch (error) {
     console.error(`[FirestoreService] Error saving project ${project.id}:`, error);
@@ -123,7 +160,7 @@ export async function unsubscribeFromAllProjectUpdates(projectId: string): Promi
 const DEFAULT_EMPTY_TEXT_CONTENT = "<p></p>";
 const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = {
   elements: [],
-  appState: { ZenModeEnabled: false, viewModeEnabled: false },
+  appState: { ZenModeEnabled: false, viewModeEnabled: false } as ExcalidrawAppState, // Ensure appState is defined
   files: {}
 };
 
@@ -162,7 +199,8 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
   try {
     const newProjectId = crypto.randomUUID();
     const now = new Date().toISOString();
-    const projectToCreate: Project = {
+    
+    let projectToCreate: Project = {
       ...newProjectData,
       id: newProjectId,
       createdAt: now,
@@ -171,11 +209,18 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
       textContent: newProjectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
       whiteboardContent: newProjectData.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA},
     };
+
+    // Sanitize before initial creation
+    if (projectToCreate.whiteboardContent && projectToCreate.whiteboardContent.appState && projectToCreate.whiteboardContent.appState.collaborators) {
+        delete projectToCreate.whiteboardContent.appState.collaborators;
+    }
+    
+    const finalProjectToCreate = sanitizeDataForFirestore(projectToCreate);
     
     const projectDocRef = doc(db, PROJECTS_COLLECTION, newProjectId);
-    await setDoc(projectDocRef, projectToCreate);
-    console.log(`[FirestoreService] Project "${projectToCreate.name}" (ID: ${newProjectId}) created.`);
-    return projectToCreate;
+    await setDoc(projectDocRef, finalProjectToCreate);
+    console.log(`[FirestoreService] Project "${finalProjectToCreate.name}" (ID: ${newProjectId}) created.`);
+    return finalProjectToCreate as Project; // Cast back after sanitization for return type consistency
   } catch (error) {
     console.error('[FirestoreService] Error creating project:', error);
     throw error;
