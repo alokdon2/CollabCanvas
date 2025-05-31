@@ -209,17 +209,19 @@ export default function ProjectPage() {
           </div>
 
           <div className="flex-grow"></div> {/* Spacer */}
+          
+          <span className="text-xs text-muted-foreground mr-2">---DEBUG---</span> {/* DEBUG MARKER */}
 
-          <div className="flex items-center gap-2 mx-2"> {/* Group for Explorer and View Mode Toggles */}
+          {/* Group for Explorer and View Mode Toggles */}
+          <div className="flex items-center gap-2 mx-2"> 
             <Button 
               variant="outline" 
-              size="sm" 
+              size="icon" // Simplified to icon size
               onClick={() => setIsExplorerVisible(!isExplorerVisible)} 
               aria-label={isExplorerVisible ? "Hide File Explorer" : "Show File Explorer"}
               title={isExplorerVisible ? "Hide File Explorer" : "Show File Explorer"}
             >
-              <FolderOpen className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">Explorer</span>
+              <FolderOpen className="h-5 w-5" /> {/* Icon only, no extra classes */}
             </Button>
 
             <div className="flex items-center gap-1 px-2 rounded-md border bg-muted">
