@@ -37,6 +37,7 @@ export function CreateProjectDialog({ onCreateProject }: CreateProjectDialogProp
       name: projectName.trim(),
       textContent: "<p></p>", // Initialize with an empty paragraph for TipTap
       whiteboardContent: null, // Initialize with null to let Excalidraw use its defaults
+      fileSystemRoots: [], // Initialize empty file system
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -82,3 +83,4 @@ export function CreateProjectDialog({ onCreateProject }: CreateProjectDialogProp
     </Dialog>
   );
 }
+

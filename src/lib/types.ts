@@ -55,11 +55,21 @@ export interface WhiteboardData {
   files?: ExcalidrawBinaryFiles;
 }
 
+export interface FileSystemNode {
+  id: string;
+  name: string;
+  type: 'file' | 'folder';
+  children?: FileSystemNode[]; // Only for folders
+  content?: string; // Only for files, initially empty or storing simple text
+}
+
 export interface Project {
   id: string;
   name: string;
   textContent: string;
   whiteboardContent: WhiteboardData | null;
+  fileSystemRoots: FileSystemNode[]; // Added for file explorer
   createdAt: string; 
   updatedAt: string; 
 }
+

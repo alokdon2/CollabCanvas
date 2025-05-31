@@ -8,7 +8,7 @@ import useLocalStorage from "@/hooks/use-local-storage";
 import type { Project } from "@/lib/types";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutDashboard } from "lucide-react"; 
+import { Search, LayoutDashboard, FolderOpen } from "lucide-react"; 
 
 const initialProjects: Project[] = [
   {
@@ -16,6 +16,12 @@ const initialProjects: Project[] = [
     name: "My First Project",
     textContent: "<p>This is the content of my first project's document.</p><p>You can <strong>bold</strong> text, make it <em>italic</em>, or create headings!</p><h1>Heading 1</h1><h2>Heading 2</h2><ul><li>Bullet list item 1</li><li>Bullet list item 2</li></ul><ol><li>Numbered list item 1</li><li>Numbered list item 2</li></ol>",
     whiteboardContent: { elements: [], appState: { viewBackgroundColor: '#FFFFFF' } },
+    fileSystemRoots: [
+      { id: 'folder-1', name: 'Documents', type: 'folder', children: [
+        { id: 'file-1-1', name: 'Meeting Notes.txt', type: 'file', content: 'Initial notes here.'},
+      ]},
+      { id: 'file-2', name: 'Readme.md', type: 'file', content: '# Project Readme'}
+    ],
     createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
     updatedAt: new Date().toISOString(),
   },
@@ -31,6 +37,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setMounted(true);
+    // Ensure all projects have fileSystemRoots initialized if they don't from older data
+    setProjects(prevProjects => 
+      prevProjects.map(p => ({
+        ...p,
+        fileSystemRoots: p.fileSystemRoots || []
+      }))
+    );
   }, []);
 
   const handleCreateProject = (newProject: Project) => {
@@ -113,3 +126,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

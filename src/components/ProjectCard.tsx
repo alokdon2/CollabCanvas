@@ -1,7 +1,7 @@
 
 import Link from "next/link";
 import { format } from "date-fns";
-import { Edit3, FileText, Trash2, Share2, LayoutDashboard } from "lucide-react";
+import { Edit3, FileText, Trash2, Share2, LayoutDashboard, Folder } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import type { Project } from "@/lib/types";
+import type { Project, FileSystemNode } from "@/lib/types";
 
 interface ProjectCardProps {
   project: Project;
@@ -30,9 +30,21 @@ interface ProjectCardProps {
   onShareProject: (project: Project) => void;
 }
 
+function countFileSystemItems(nodes: FileSystemNode[]): number {
+  let count = nodes.length;
+  for (const node of nodes) {
+    if (node.type === 'folder' && node.children) {
+      count += countFileSystemItems(node.children);
+    }
+  }
+  return count;
+}
+
 export function ProjectCard({ project, onDeleteProject, onShareProject }: ProjectCardProps) {
   const textSnippet = project.textContent?.replace(/<[^>]+>/g, ' ').trim(); // Strip HTML for snippet
   const whiteboardItemCount = project.whiteboardContent?.elements?.length || 0;
+  const fileSystemItemCount = project.fileSystemRoots ? countFileSystemItems(project.fileSystemRoots) : 0;
+
 
   return (
     <Card className="flex flex-col">
@@ -52,7 +64,13 @@ export function ProjectCard({ project, onDeleteProject, onShareProject }: Projec
         <div className="flex items-center space-x-2 text-sm text-muted-foreground">
           <LayoutDashboard className="h-4 w-4 shrink-0" />
           <span>
-            {whiteboardItemCount > 0 ? `${whiteboardItemCount} whiteboard item${whiteboardItemCount === 1 ? '' : 's'}` : "Empty whiteboard"}
+            {whiteboardItemCount > 0 ? `${whiteboardItemCount} board item${whiteboardItemCount === 1 ? '' : 's'}` : "Empty board"}
+          </span>
+        </div>
+         <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+          <Folder className="h-4 w-4 shrink-0" />
+          <span>
+            {fileSystemItemCount > 0 ? `${fileSystemItemCount} project file${fileSystemItemCount === 1 ? '' : 's'}` : "No project files"}
           </span>
         </div> 
       </CardContent>
@@ -93,3 +111,4 @@ export function ProjectCard({ project, onDeleteProject, onShareProject }: Projec
     </Card>
   );
 }
+
