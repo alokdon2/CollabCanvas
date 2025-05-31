@@ -79,7 +79,8 @@ export default function ProjectPage() {
 
   const [activeTextContent, setActiveTextContent] = useState(DEFAULT_EMPTY_TEXT_CONTENT);
   const [activeWhiteboardData, setActiveWhiteboardData] = useState<WhiteboardData>({...DEFAULT_EMPTY_WHITEBOARD_DATA});
-  const activeWhiteboardDataRef = useRef<WhiteboardData>({...DEFAULT_EMPTY_WHITEBOARD_DATA}); // For stable comparison in callback
+  const activeWhiteboardDataRef = useRef<WhiteboardData>({...DEFAULT_EMPTY_WHITEBOARD_DATA}); 
+  
   const [activeFileSystemRoots, setActiveFileSystemRoots] = useState<FileSystemNode[]>([]); 
   
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
@@ -117,11 +118,10 @@ export default function ProjectPage() {
           const rootBoard = projectData.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA};
           setProjectRootTextContent(rootText);
           setProjectRootWhiteboardData(rootBoard);
-          activeWhiteboardDataRef.current = rootBoard;
-
-
+          
           setActiveTextContent(rootText); 
           setActiveWhiteboardData(rootBoard);
+          activeWhiteboardDataRef.current = rootBoard;
           setActiveFileSystemRoots(projectData.fileSystemRoots || []);
           setSelectedFileNodeId(null); 
         } else {
@@ -138,8 +138,6 @@ export default function ProjectPage() {
     }
     fetchProject();
     
-    // Corrected: Ensure registration happens after fetchProject can potentially set currentProject
-    // These registrations should ideally not depend on currentProject directly for their setup phase.
     if (typeof registerTriggerNewFile === 'function') {
         registerTriggerNewFile(() => handleOpenNewItemDialog('file', null));
     }
@@ -147,26 +145,23 @@ export default function ProjectPage() {
         registerTriggerNewFolder(() => handleOpenNewItemDialog('folder', null));
     }
 
-
     return () => {
       setCurrentProjectName(null);
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, router, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder]); // toast removed
+  }, [projectId, router, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder]); 
 
-  // Update ref whenever activeWhiteboardData changes
   useEffect(() => {
     activeWhiteboardDataRef.current = activeWhiteboardData;
   }, [activeWhiteboardData]);
 
-  // Auto-save effect
   useEffect(() => {
-    if (!mounted || isLoadingProject || !currentProject) return; // currentProject check is important here
+    if (!mounted || isLoadingProject || !currentProject) return;
 
     const projectDataToSave: Project = {
-      id: currentProject.id, // from stable currentProject state after load
-      createdAt: currentProject.createdAt, // from stable currentProject state after load
+      id: currentProject.id, 
+      createdAt: currentProject.createdAt, 
       name: editingProjectName || currentProject.name,
       fileSystemRoots: [...activeFileSystemRoots], 
       textContent: projectRootTextContent,       
@@ -191,7 +186,7 @@ export default function ProjectPage() {
         });
       };
       projectDataToSave.fileSystemRoots = updateNodeContentRecursive(projectDataToSave.fileSystemRoots);
-    } else {
+    } else { 
       projectDataToSave.textContent = activeTextContent;
       projectDataToSave.whiteboardContent = activeWhiteboardData;
     }
@@ -203,20 +198,19 @@ export default function ProjectPage() {
     }
 
     saveTimeoutRef.current = setTimeout(async () => {
-      if (pendingSaveDataRef.current && currentProject) { // Check currentProject again before using its properties
+      if (pendingSaveDataRef.current && currentProject) {
         const projectToActuallySave = pendingSaveDataRef.current.project;
         try {
           await dbSaveProject(projectToActuallySave);
-          
-          // Only update currentProjectName in context if the name actually changed and was saved.
-          if (editingProjectName && projectToActuallySave.name !== currentProjectNameFromContext) {
-             setCurrentProjectName(projectToActuallySave.name);
+          // Do not call setCurrentProject here for content changes.
+          // It's updated on load or explicit name changes (handleNameEditToggle).
+          if (projectToActuallySave.name !== currentProjectNameFromContext) {
+            setCurrentProjectName(projectToActuallySave.name);
           }
-          // DO NOT call setCurrentProject(projectToActuallySave) here for content changes to avoid loops.
-          // It's updated on load or explicit name changes.
+          // toast({ title: "Progress Saved", description: "Your changes have been saved.", duration: 2000});
         } catch (error) {
           console.error("Failed to auto-save project:", error);
-          // toast({ title: "Save Error", description: `Could not save project changes: ${(error as Error).message}`, variant: "destructive"});
+          // toast({ title: "Save Error", description: `Could not save: ${(error as Error).message}`, variant: "destructive"});
         } finally {
           pendingSaveDataRef.current = null;
         }
@@ -232,28 +226,24 @@ export default function ProjectPage() {
     activeTextContent, activeWhiteboardData, activeFileSystemRoots,
     editingProjectName, selectedFileNodeId, 
     projectRootTextContent, projectRootWhiteboardData, 
-    mounted, isLoadingProject, currentProject?.id, currentProject?.createdAt, currentProject?.name, // Use specific stable fields from currentProject
+    mounted, isLoadingProject, currentProject, 
     setCurrentProjectName, currentProjectNameFromContext
-    // toast removed
   ]);
 
 
   const handleTextChange = useCallback((newText: string) => {
     setActiveTextContent(newText);
-  }, [setActiveTextContent]); // Dependency is stable
+  }, [setActiveTextContent]); 
   
   const handleWhiteboardChange = useCallback((newData: WhiteboardData) => {
-    // Only update if elements have actually changed to avoid loops
     if (JSON.stringify(newData.elements) !== JSON.stringify(activeWhiteboardDataRef.current?.elements || [])) {
         setActiveWhiteboardData(newData);
     } else {
-        // If elements are the same, check if other critical parts of appState changed
-        // This can be refined, but for now, check a common one like viewBackgroundColor
         if(newData.appState?.viewBackgroundColor !== activeWhiteboardDataRef.current?.appState?.viewBackgroundColor) {
             setActiveWhiteboardData(newData);
         }
     }
-  }, [setActiveWhiteboardData]); // activeWhiteboardDataRef is stable, setActiveWhiteboardData is stable
+  }, [setActiveWhiteboardData]); 
   
   const handleNameEditToggle = useCallback(async () => {
     if (isEditingName && currentProject) {
@@ -269,12 +259,12 @@ export default function ProjectPage() {
           toast({title: "Error", description: "Failed to update project name.", variant: "destructive"});
           setEditingProjectName(currentProject.name); 
         }
-      } else {
+      } else if (currentProject) { // Ensure currentProject exists before accessing its name
         setEditingProjectName(currentProject.name); 
       }
     }
     setIsEditingName(!isEditingName);
-  }, [isEditingName, currentProject, editingProjectName, setCurrentProjectName, toast, setIsEditingName, setEditingProjectName]);
+  }, [isEditingName, currentProject, editingProjectName, setCurrentProjectName, toast]);
 
 
   const confirmDeleteProject = useCallback(async () => {
@@ -286,8 +276,7 @@ export default function ProjectPage() {
     } catch (error) {
       toast({ title: "Error", description: "Could not delete project.", variant: "destructive" });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProject?.id, currentProject?.name, router, toast]);
+  }, [currentProject, router, toast]);
 
   const addNodeToTreeRecursive = (nodes: FileSystemNode[], parentId: string | null, newNode: FileSystemNode): FileSystemNode[] => {
     if (parentId === null) {
@@ -310,7 +299,7 @@ export default function ProjectPage() {
     setNewItemName("");
     setNewItemError("");
     setIsNewItemDialogOpen(true);
-  }, [setNewItemType, setParentIdForNewItem, setNewItemName, setNewItemError, setIsNewItemDialogOpen]);
+  }, []);
 
 
   const handleCreateNewItem = useCallback(() => {
@@ -334,7 +323,7 @@ export default function ProjectPage() {
     toast({ title: `${newItemType === 'file' ? 'File' : 'Folder'} Created`, description: `"${newNode.name}" added.`});
     setIsNewItemDialogOpen(false);
     setNewItemType(null);
-  }, [newItemName, newItemType, parentIdForNewItem, toast, setActiveFileSystemRoots, setNewItemError, setIsNewItemDialogOpen, setNewItemType]);
+  }, [newItemName, newItemType, parentIdForNewItem, toast]);
   
   const findNodeByIdRecursive = (nodes: FileSystemNode[], nodeId: string): FileSystemNode | null => {
     for (const node of nodes) {
@@ -357,10 +346,12 @@ export default function ProjectPage() {
             const newBoardData = selectedNode.whiteboardContent ? {...selectedNode.whiteboardContent} : {...DEFAULT_EMPTY_WHITEBOARD_DATA};
             setActiveWhiteboardData(newBoardData);
         } else if (selectedNode && selectedNode.type === 'folder') {
+            // When a folder is selected, revert to project root content
             setActiveTextContent(projectRootTextContent);
             setActiveWhiteboardData({...projectRootWhiteboardData});
         }
     } else {
+        // When nothing is selected (or project root selected), revert to project root content
         setActiveTextContent(projectRootTextContent);
         setActiveWhiteboardData({...projectRootWhiteboardData});
     }
@@ -369,7 +360,7 @@ export default function ProjectPage() {
 
   const handleDeleteNodeRequest = useCallback((nodeId: string) => {
     setNodeToDeleteId(nodeId); 
-  }, [setNodeToDeleteId]);
+  }, []);
 
   const confirmDeleteNode = useCallback(() => {
     if (!nodeToDeleteId) return;
@@ -383,7 +374,7 @@ export default function ProjectPage() {
     }
     toast({ title: "Item Deleted", description: "File/folder has been removed." });
     setNodeToDeleteId(null); 
-  }, [nodeToDeleteId, selectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, toast, setActiveFileSystemRoots, setSelectedFileNodeId, setActiveTextContent, setActiveWhiteboardData, setNodeToDeleteId]);
+  }, [nodeToDeleteId, selectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, toast]);
 
 
   const onAddFileToFolderCallback = useCallback((folderId: string | null) => {
@@ -514,37 +505,46 @@ export default function ProjectPage() {
               <ResizableHandle withHandle />
             </>
           )}
-          <ResizablePanel defaultSize={isExplorerVisible ? 80 : 100}>
-            <ResizablePanelGroup direction="horizontal" className="h-full w-full">
-              {(viewMode === "editor" || viewMode === "both") && (
-                <ResizablePanel defaultSize={viewMode === 'editor' ? 100 : (viewMode === 'both' ? 50 : 0)} minSize={viewMode === 'both' ? 20 : (viewMode === 'editor' ? 100 : 0)}>
-                  { (viewMode === 'editor' || viewMode === 'both') &&
-                    <div className="h-full p-1 sm:p-2 md:p-3">
-                      <RichTextEditor 
-                        value={activeTextContent} 
-                        onChange={handleTextChange}
-                      />
-                    </div>
-                  }
+          <ResizablePanel defaultSize={isExplorerVisible ? 80 : 100} className="flex flex-col">
+            {viewMode === "editor" && (
+              <div className="h-full p-1 sm:p-2 md:p-3">
+                <RichTextEditor 
+                  value={activeTextContent} 
+                  onChange={handleTextChange}
+                />
+              </div>
+            )}
+            {viewMode === "whiteboard" && (
+              <div className="h-full p-1 sm:p-2 md:p-3">
+                <Whiteboard
+                  initialData={activeWhiteboardData}
+                  onChange={handleWhiteboardChange}
+                  isReadOnly={false} 
+                />
+              </div>
+            )}
+            {viewMode === "both" && (
+              <ResizablePanelGroup direction="horizontal" className="h-full w-full">
+                <ResizablePanel defaultSize={50} minSize={20}>
+                  <div className="h-full p-1 sm:p-2 md:p-3">
+                    <RichTextEditor 
+                      value={activeTextContent} 
+                      onChange={handleTextChange}
+                    />
+                  </div>
                 </ResizablePanel>
-              )}
-              {viewMode === "both" && (
-                 <ResizableHandle withHandle />
-              )}
-              {(viewMode === "whiteboard" || viewMode === "both") && (
-                <ResizablePanel defaultSize={viewMode === 'whiteboard' ? 100 : (viewMode === 'both' ? 50 : 0)} minSize={viewMode === 'both' ? 20 : (viewMode === 'whiteboard' ? 100 : 0)}>
-                  { (viewMode === 'whiteboard' || viewMode === 'both') &&
-                     <div className="h-full p-1 sm:p-2 md:p-3">
-                      <Whiteboard
-                        initialData={activeWhiteboardData}
-                        onChange={handleWhiteboardChange}
-                        isReadOnly={false} // Assuming we always want it editable for now
-                      />
-                    </div>
-                  }
+                <ResizableHandle withHandle />
+                <ResizablePanel defaultSize={50} minSize={20}>
+                  <div className="h-full p-1 sm:p-2 md:p-3">
+                    <Whiteboard
+                      initialData={activeWhiteboardData}
+                      onChange={handleWhiteboardChange}
+                      isReadOnly={false}
+                    />
+                  </div>
                 </ResizablePanel>
-              )}
-            </ResizablePanelGroup>
+              </ResizablePanelGroup>
+            )}
           </ResizablePanel>
         </ResizablePanelGroup>
       </main>
@@ -589,7 +589,7 @@ export default function ProjectPage() {
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the selected item
-              {activeFileSystemRoots && findNodeByIdRecursive(activeFileSystemRoots, nodeToDeleteId || '')?.type === 'folder' && ' and all its contents'}.
+              {currentProject && activeFileSystemRoots && findNodeByIdRecursive(activeFileSystemRoots, nodeToDeleteId || '')?.type === 'folder' && ' and all its contents'}.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
