@@ -188,6 +188,7 @@ export default function ProjectPage() {
           <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2" aria-label="Back to dashboard">
             <ArrowLeft className="h-5 w-5" />
           </Button>
+          <span className="text-xs text-muted-foreground mr-2">---DEBUG-MARKER-AFTER-BACK---</span> {/* MOVED DEBUG MARKER */}
           
           <div className="flex items-center">
             {isEditingName ? (
@@ -211,7 +212,7 @@ export default function ProjectPage() {
 
           {/* Right section: All controls, pushed by ml-auto */}
           <div className="ml-auto flex items-center gap-2">
-            <span className="text-xs text-muted-foreground mr-2">---DEBUG---</span> {/* DEBUG MARKER */}
+            
 
             <Button 
               variant="outline" 
