@@ -7,7 +7,7 @@ import { RichTextEditor } from "@/components/RichTextEditor";
 import { Whiteboard } from "@/components/Whiteboard";
 import type { Project, WhiteboardData, FileSystemNode } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderTree, Loader2, PanelLeftOpen } from "lucide-react";
+import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderTree, Loader2, PanelLeftOpen, PlusCircle, FilePlus2, FolderPlus } from "lucide-react"; // Added PlusCircle, FilePlus2, FolderPlus
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"; // Added DropdownMenu components
 import {
   AlertDialog,
   AlertDialogAction,
@@ -236,6 +242,7 @@ export default function ProjectPage() {
     }
     fetchProject();
     
+    // These registrations are still used by FileExplorer context menus via ProjectContext
     if (typeof registerTriggerNewFile === 'function') {
         registerTriggerNewFile(() => handleOpenNewItemDialog('file', null));
     }
@@ -263,6 +270,7 @@ export default function ProjectPage() {
       }
     } catch (error) {
       console.error("Failed to save project:", error);
+      // Consider adding a toast here if needed
     }
   }, [currentProjectNameFromContext, setCurrentProjectName]);
 
@@ -303,7 +311,7 @@ export default function ProjectPage() {
   }, [
     projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots, 
     editingProjectName, 
-    mounted, isLoadingProject, currentProject, // currentProject.id, currentProject.createdAt, currentProject.name are stable parts of currentProject
+    mounted, isLoadingProject, currentProject, 
     performSave
   ]);
 
@@ -521,7 +529,6 @@ export default function ProjectPage() {
                 toast({ title: "Invalid Move", description: "Cannot move a folder into one of its own subfolders.", variant: "destructive" });
                 return prevRoots;
             }
-            const parentNode = findNodeByIdRecursive(prevRoots, currentParentId); // Check in original tree structure
             // To find parent in the *original* tree to trace back:
             let foundParentOfTarget: FileSystemNode | null = null;
             const findParent = (nodes: FileSystemNode[], id: string, parent: FileSystemNode | null): FileSystemNode | null => {
@@ -590,10 +597,29 @@ export default function ProjectPage() {
                 {editingProjectName} 
               </h1>
             )}
-            <Button variant="ghost" size="icon" onClick={handleNameEditToggle} className="ml-1" aria-label="Edit project name">
+            <Button variant="ghost" size="icon" onClick={handleNameEditToggle} className="ml-1 mr-2" aria-label="Edit project name">
               {isEditingName ? <Check className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
             </Button>
           </div>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="px-2">
+                <PlusCircle className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">New Item</span>
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onClick={() => handleOpenNewItemDialog('file', null)}>
+                <FilePlus2 className="mr-2 h-4 w-4" />
+                <span>New File</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleOpenNewItemDialog('folder', null)}>
+                <FolderPlus className="mr-2 h-4 w-4" />
+                <span>New Folder</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <div className="ml-auto flex items-center gap-2">
             <Button 
@@ -771,9 +797,3 @@ export default function ProjectPage() {
     </div>
   );
 }
-    
- 
-
-    
-
-    

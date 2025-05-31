@@ -4,22 +4,15 @@ import Link from 'next/link';
 import AppLogo from '@/components/AppLogo';
 import { ThemeSwitcher } from '@/components/ThemeSwitcher';
 import { UserProfileDropdown } from '@/components/UserProfileDropdown';
-import { Button } from '@/components/ui/button';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { FilePlus2, FolderPlus, PlusCircle } from "lucide-react";
-import { useProjectContext } from "@/contexts/ProjectContext";
+// Removed Button, DropdownMenu components, and icons related to new item creation
+// Removed useProjectContext as it's no longer used here for new item creation
 
 interface NavbarProps {
   currentProjectName?: string | null;
 }
 
 export function Navbar({ currentProjectName }: NavbarProps) {
-  const { requestNewFile, requestNewFolder } = useProjectContext();
+  // Removed requestNewFile and requestNewFolder from useProjectContext
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -29,24 +22,7 @@ export function Navbar({ currentProjectName }: NavbarProps) {
           <>
             <span className="mx-2 text-muted-foreground">/</span>
             <span className="font-medium text-foreground truncate max-w-[150px] sm:max-w-xs">{currentProjectName}</span>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="ml-2">
-                  <PlusCircle className="h-5 w-5" />
-                  <span className="sr-only">New Item</span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start">
-                <DropdownMenuItem onClick={requestNewFile}>
-                  <FilePlus2 className="mr-2 h-4 w-4" />
-                  <span>New File</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={requestNewFolder}>
-                  <FolderPlus className="mr-2 h-4 w-4" />
-                  <span>New Folder</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            {/* DropdownMenu for New File/Folder removed from here */}
           </>
         )}
         <div className="flex flex-1 items-center justify-end space-x-4">
