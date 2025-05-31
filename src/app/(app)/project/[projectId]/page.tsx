@@ -63,13 +63,7 @@ const updateNodeInTreeRecursive = (
   return nodes.map(node => {
     if (node.id === nodeId && node.type === 'file') {
       // Create a new node object with updated content
-      const updatedNode = { ...node };
-      if (newContent.textContent !== undefined) {
-        updatedNode.textContent = newContent.textContent;
-      }
-      if (newContent.whiteboardContent !== undefined) {
-        updatedNode.whiteboardContent = newContent.whiteboardContent;
-      }
+      const updatedNode = { ...node, ...newContent }; // Simplified update
       return updatedNode;
     }
     if (node.children) {
@@ -368,7 +362,7 @@ export default function ProjectPage() {
     }
     setIsEditingName(!isEditingName);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEditingName, currentProject, editingProjectName, setCurrentProjectName, projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots]);
+  }, [isEditingName, currentProject, editingProjectName, setCurrentProjectName, toast, projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots]);
 
 
   const confirmDeleteProject = useCallback(async () => {
@@ -381,7 +375,7 @@ export default function ProjectPage() {
       toast({ title: "Error", description: "Could not delete project.", variant: "destructive" });
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentProject, router]);
+  }, [currentProject, router, toast]);
 
 
   const handleOpenNewItemDialog = useCallback((type: 'file' | 'folder', parentNodeId: string | null) => {
@@ -415,7 +409,7 @@ export default function ProjectPage() {
     setIsNewItemDialogOpen(false);
     setNewItemType(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [newItemName, newItemType, parentIdForNewItem]);
+  }, [newItemName, newItemType, parentIdForNewItem, toast]);
   
 
   const handleNodeSelectedInExplorer = useCallback(async (selectedNode: FileSystemNode | null) => {
@@ -497,7 +491,7 @@ export default function ProjectPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     nodeToDeleteId, selectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, 
-    activeFileSystemRoots, performSave, currentProject, editingProjectName
+    activeFileSystemRoots, performSave, currentProject, editingProjectName, toast
   ]);
 
 
@@ -555,14 +549,14 @@ export default function ProjectPage() {
       return newRootsWithMovedNode;
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [toast]);
 
 
   if (!mounted || isLoadingProject || !currentProject) {
     return (
-      <div className="flex min-h-screen flex-col fixed inset-0 pt-16">
+      <div className="flex min-h-screen flex-col fixed inset-0 pt-14"> {/* Changed pt-16 to pt-14 */}
          <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-            <div className="container flex h-16 items-center px-4 sm:px-6 lg:px-8">
+            <div className="container flex h-14 items-center px-4 sm:px-6 lg:px-8"> {/* Changed h-16 to h-14 */}
                 <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2">
                     <ArrowLeft className="h-5 w-5" />
                 </Button>
@@ -579,9 +573,9 @@ export default function ProjectPage() {
   }
   
   return (
-    <div className="flex h-screen flex-col fixed inset-0 pt-16"> 
+    <div className="flex h-screen flex-col fixed inset-0 pt-14">  {/* Changed pt-16 to pt-14 */}
        <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center px-4 sm:px-6 lg:px-8">
+        <div className="container flex h-14 items-center px-4 sm:px-6 lg:px-8"> {/* Changed h-16 to h-14 */}
           <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2" aria-label="Back to dashboard">
             <ArrowLeft className="h-5 w-5" />
           </Button>
