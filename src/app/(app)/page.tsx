@@ -4,41 +4,24 @@
 import { useState, useEffect, useCallback } from "react";
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
 import { ProjectCard } from "@/components/ProjectCard";
-import type { Project, FileSystemNode, WhiteboardData } from "@/lib/types"; // Added WhiteboardData
+import type { Project, FileSystemNode, WhiteboardData } from "@/lib/types";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
 import { Search, LayoutDashboard, FolderOpen, Loader2 } from "lucide-react";
-import { dbGetAllProjects, dbSaveProject, dbDeleteProject, dbSaveAllProjects } from "@/lib/indexedDB";
 import { useToast } from "@/hooks/use-toast";
+import { 
+  getAllProjectsFromFirestore, 
+  createProjectInFirestore, 
+  deleteProjectFromFirestore 
+} from "@/services/realtimeCollaborationService"; // Updated service imports
 
-const DEFAULT_EMPTY_TEXT_CONTENT = "<p></p>"; // Define if not already
-const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = { // Define if not already
+const DEFAULT_EMPTY_TEXT_CONTENT = "<p></p>";
+const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = {
   elements: [],
   appState: { ZenModeEnabled: false, viewModeEnabled: false },
   files: {}
 };
 
-const initialProjects: Project[] = [
-  {
-    id: "1",
-    name: "My First Project",
-    textContent: "<p>This is the content of my first project's document.</p><p>You can <strong>bold</strong> text, make it <em>italic</em>, or create headings!</p><h1>Heading 1</h1><h2>Heading 2</h2><ul><li>Bullet list item 1</li><li>Bullet list item 2</li></ul><ol><li>Numbered list item 1</li><li>Numbered list item 2</li></ol>",
-    whiteboardContent: null,
-    fileSystemRoots: [
-      { id: 'folder-1', name: 'Documents', type: 'folder', 
-        textContent: '<p>This is content for the Documents folder itself.</p>', 
-        whiteboardContent: null,
-        children: [
-          { id: 'file-1-1', name: 'Meeting Notes.txt', type: 'file', content: 'Initial notes here.', textContent: '<p>Initial notes here.</p>', whiteboardContent: null },
-      ]},
-      { id: 'file-2', name: 'Readme.md', type: 'file', content: '# Project Readme', textContent: '<h1>Project Readme</h1>', whiteboardContent: null }
-    ],
-    createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-];
-
-// Helper function to ensure all nodes (files and folders) have content fields
 const ensureNodeContentDefaults = (nodes: FileSystemNode[]): FileSystemNode[] => {
   return nodes.map(node => ({
     ...node,
@@ -47,7 +30,6 @@ const ensureNodeContentDefaults = (nodes: FileSystemNode[]): FileSystemNode[] =>
     ...(node.children && { children: ensureNodeContentDefaults(node.children) }),
   }));
 };
-
 
 export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -63,29 +45,18 @@ export default function DashboardPage() {
     async function loadProjects() {
       setIsLoading(true);
       try {
-        let dbProjects = await dbGetAllProjects();
-        if (dbProjects.length === 0 && initialProjects.length > 0) {
-          const projectsWithEnsuredContent = initialProjects.map(p => ({
-            ...p,
-            textContent: p.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
-            whiteboardContent: p.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
-            fileSystemRoots: ensureNodeContentDefaults(p.fileSystemRoots || [])
-          }));
-          await dbSaveAllProjects(projectsWithEnsuredContent);
-          dbProjects = projectsWithEnsuredContent;
-        }
-        
-        const projectsWithFinalContentDefaults = dbProjects.map(p => ({
+        const firestoreProjects = await getAllProjectsFromFirestore();
+        // Ensure content defaults are applied when loading from Firestore
+        const projectsWithFinalContentDefaults = firestoreProjects.map(p => ({
           ...p,
           textContent: p.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
           whiteboardContent: p.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
           fileSystemRoots: ensureNodeContentDefaults(p.fileSystemRoots || [])
         }));
-
         setProjects(projectsWithFinalContentDefaults);
       } catch (error) {
-        console.error("Failed to load projects from DB", error);
-        toast({ title: "Error", description: `Could not load projects: ${(error as Error).message}`, variant: "destructive" });
+        console.error("Failed to load projects from Firestore", error);
+        toast({ title: "Error Loading Projects", description: `Could not load projects: ${(error as Error).message}`, variant: "destructive" });
       } finally {
         setIsLoading(false);
       }
@@ -97,35 +68,33 @@ export default function DashboardPage() {
     }
   }, [toast]);
 
-  const handleCreateProject = useCallback(async (newProjectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>) => {
-    const newProject: Project = {
+  const handleCreateProject = useCallback(async (newProjectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'fileSystemRoots'>) => {
+    // Augment with default content fields before sending to Firestore service
+    const augmentedData = {
       ...newProjectData,
-      id: crypto.randomUUID(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
       fileSystemRoots: ensureNodeContentDefaults(newProjectData.fileSystemRoots || []),
       textContent: newProjectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
       whiteboardContent: newProjectData.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA},
     };
     try {
-      await dbSaveProject(newProject);
-      setProjects((prevProjects) => [...prevProjects, newProject]);
+      const newProject = await createProjectInFirestore(augmentedData);
+      setProjects((prevProjects) => [newProject, ...prevProjects]); // Add to start of list for immediate visibility
       toast({ title: "Project Created", description: `"${newProject.name}" has been created.`});
     } catch (error) {
-      console.error("Failed to create project in DB", error);
-      toast({ title: "Error", description: "Could not create project.", variant: "destructive" });
+      console.error("Failed to create project in Firestore", error);
+      toast({ title: "Error Creating Project", description: "Could not create project.", variant: "destructive" });
     }
   }, [toast]);
 
   const handleDeleteProject = useCallback(async (projectId: string) => {
     const projectToDelete = projects.find(p => p.id === projectId);
     try {
-      await dbDeleteProject(projectId);
+      await deleteProjectFromFirestore(projectId);
       setProjects((prevProjects) => prevProjects.filter((p) => p.id !== projectId));
       toast({ title: "Project Deleted", description: `"${projectToDelete?.name || 'Project'}" has been deleted.`});
     } catch (error) {
-      console.error("Failed to delete project from DB", error);
-      toast({ title: "Error", description: "Could not delete project.", variant: "destructive" });
+      console.error("Failed to delete project from Firestore", error);
+      toast({ title: "Error Deleting Project", description: "Could not delete project.", variant: "destructive" });
     }
   }, [projects, toast]);
 
@@ -146,7 +115,7 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center justify-center py-10">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="ml-2">Loading projects...</p>
+          <p className="ml-2">Loading projects from cloud...</p>
         </div>
       </div>
     );
@@ -173,7 +142,8 @@ export default function DashboardPage() {
 
       {filteredProjects.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredProjects.sort((a,b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()).map((project) => (
+          {/* Projects are already sorted by 'updatedAt' (desc) from Firestore query */}
+          {filteredProjects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}
@@ -207,4 +177,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-

@@ -1,53 +1,87 @@
 
 /**
- * @fileOverview Placeholder service for real-time collaboration.
- * In a real application, these functions would interact with a backend service
- * like Firebase Realtime Database, Firestore, or a custom WebSocket server.
+ * @fileOverview Service for real-time collaboration using Firebase Firestore.
  */
-import type { Project } from '@/lib/types';
+import { db } from '@/lib/firebase';
+import type { Project, FileSystemNode, WhiteboardData } from '@/lib/types';
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  onSnapshot, 
+  collection, 
+  getDocs, 
+  deleteDoc, 
+  query, 
+  orderBy,
+  serverTimestamp, // Can be used if storing native Firestore timestamps
+  Timestamp
+} from 'firebase/firestore';
 
-// Simulate a backend data store (in a real app, this would be your actual backend)
-// Since 'use server' is removed, these are now client-side module-level variables.
-const backendProjectData: Record<string, Project> = {};
-const projectUpdateListeners: Record<string, Array<(project: Project) => void>> = {};
+const PROJECTS_COLLECTION = 'projects';
+
+// Helper to convert Firestore Timestamps to ISO strings if they exist
+const convertTimestamps = (data: any): any => {
+  if (data && typeof data === 'object') {
+    for (const key in data) {
+      if (data[key] instanceof Timestamp) {
+        data[key] = data[key].toDate().toISOString();
+      } else if (typeof data[key] === 'object') {
+        convertTimestamps(data[key]); // Recurse for nested objects
+      }
+    }
+  }
+  return data;
+};
+
 
 /**
- * Simulates loading project data from a real-time backend.
+ * Loads project data from Firestore.
  * @param projectId The ID of the project to load.
  * @returns A Promise that resolves to the project data or null if not found.
  */
 export async function loadProjectData(projectId: string): Promise<Project | null> {
-  console.log(`[ClientSimService] Attempting to load project: ${projectId}`);
-  // Simulate network delay
-  await new Promise(resolve => setTimeout(resolve, 500));
-  if (backendProjectData[projectId]) {
-    console.log(`[ClientSimService] Project ${projectId} loaded from client-side store.`);
-    return JSON.parse(JSON.stringify(backendProjectData[projectId])); // Return a copy
+  console.log(`[FirestoreService] Attempting to load project: ${projectId}`);
+  try {
+    const projectDocRef = doc(db, PROJECTS_COLLECTION, projectId);
+    const docSnap = await getDoc(projectDocRef);
+    if (docSnap.exists()) {
+      console.log(`[FirestoreService] Project ${projectId} loaded.`);
+      // Firestore Timestamps need to be converted if `Project` type expects strings
+      const projectData = convertTimestamps(docSnap.data()) as Project;
+      return projectData;
+    } else {
+      console.log(`[FirestoreService] Project ${projectId} not found.`);
+      return null;
+    }
+  } catch (error) {
+    console.error(`[FirestoreService] Error loading project ${projectId}:`, error);
+    throw error; // Re-throw to be handled by caller
   }
-  console.log(`[ClientSimService] Project ${projectId} not found in client-side store.`);
-  return null;
 }
 
 /**
- * Simulates saving project data to a real-time backend.
+ * Saves project data to Firestore.
  * @param project The project data to save.
  */
 export async function saveProjectData(project: Project): Promise<void> {
-  console.log(`[ClientSimService] Saving project: ${project.id}`);
-  // Simulate network delay
-  await new Promise(resolve => setTimeout(resolve, 500));
-  backendProjectData[project.id] = JSON.parse(JSON.stringify(project)); // Store a copy
-
-  // Notify listeners about the update
-  if (projectUpdateListeners[project.id]) {
-    console.log(`[ClientSimService] Notifying ${projectUpdateListeners[project.id].length} listeners for project ${project.id}`);
-    projectUpdateListeners[project.id].forEach(callback => callback(JSON.parse(JSON.stringify(project))));
+  console.log(`[FirestoreService] Saving project: ${project.id}`);
+  try {
+    const projectToSave = {
+      ...project,
+      updatedAt: new Date().toISOString(), // Ensure updatedAt is current
+    };
+    const projectDocRef = doc(db, PROJECTS_COLLECTION, project.id);
+    await setDoc(projectDocRef, projectToSave, { merge: true }); // Use merge to allow partial updates if needed
+    console.log(`[FirestoreService] Project ${project.id} saved.`);
+  } catch (error) {
+    console.error(`[FirestoreService] Error saving project ${project.id}:`, error);
+    throw error;
   }
-  console.log(`[ClientSimService] Project ${project.id} saved to client-side store.`);
 }
 
 /**
- * Simulates subscribing to real-time updates for a project.
+ * Subscribes to real-time updates for a project from Firestore.
  * @param projectId The ID of the project to listen to.
  * @param onUpdateCallback A callback function to execute when the project is updated.
  * @returns A Promise that resolves to an unsubscribe function.
@@ -56,53 +90,106 @@ export async function subscribeToProjectUpdates(
   projectId: string,
   onUpdateCallback: (updatedProject: Project) => void
 ): Promise<() => void> {
-  console.log(`[ClientSimService] Subscribing to updates for project: ${projectId}`);
-  // Simulate async operation if needed
-  await new Promise(resolve => setTimeout(resolve, 10)); 
+  console.log(`[FirestoreService] Subscribing to updates for project: ${projectId}`);
+  const projectDocRef = doc(db, PROJECTS_COLLECTION, projectId);
   
-  if (!projectUpdateListeners[projectId]) {
-    projectUpdateListeners[projectId] = [];
-  }
-  projectUpdateListeners[projectId].push(onUpdateCallback);
-
-  // Return an unsubscribe function
-  return () => {
-    console.log(`[ClientSimService] Unsubscribing from updates for project: ${projectId}`);
-    projectUpdateListeners[projectId] = projectUpdateListeners[projectId].filter(
-      cb => cb !== onUpdateCallback
-    );
-    if (projectUpdateListeners[projectId].length === 0) {
-      delete projectUpdateListeners[projectId];
+  const unsubscribe = onSnapshot(projectDocRef, (docSnap) => {
+    if (docSnap.exists()) {
+      console.log(`[FirestoreService] Real-time update received for project ${projectId}`);
+      const updatedProject = convertTimestamps(docSnap.data()) as Project;
+      onUpdateCallback(updatedProject);
+    } else {
+      console.log(`[FirestoreService] Real-time update: Project ${projectId} deleted or does not exist.`);
+      // Optionally, call callback with null or a specific signal for deletion
     }
-  };
+  }, (error) => {
+    console.error(`[FirestoreService] Error in real-time subscription for project ${projectId}:`, error);
+    // Handle error, maybe try to re-subscribe or notify user
+  });
+
+  return unsubscribe; // This is the function to call to stop listening
 }
 
-/**
- * Simulates unsubscribing from all updates for a specific project.
- * This is a more general cleanup than the specific unsubscribe returned by subscribeToProjectUpdates.
- * @param projectId The ID of the project.
- */
+
 export async function unsubscribeFromAllProjectUpdates(projectId: string): Promise<void> {
-  console.log(`[ClientSimService] Unsubscribing from ALL updates for project: ${projectId}`);
-  // Simulate async operation if needed
-  await new Promise(resolve => setTimeout(resolve, 10)); 
-  delete projectUpdateListeners[projectId];
+  // This function becomes less relevant as onSnapshot returns its own unsubscriber.
+  // Kept for structural similarity if other types of "all updates" were managed.
+  console.log(`[FirestoreService] UnsubscribeFromAllProjectUpdates called for ${projectId}. Individual listeners should be managed by their onSnapshot unsub function.`);
 }
 
-/**
- * Simulates unsubscribing from a single project update subscription.
- * @param subscriptionId The ID of the subscription to remove (currently not used directly in this stub,
- *                       as unsubscribe function itself handles removal from array by callback identity).
- *                       This function is kept for API compatibility if a more complex ID-based system was used.
- */
-export async function unsubscribeFromSingleProjectUpdate(subscriptionId: string): Promise<void> {
-  // In the current setup, the unsubscribe function returned by subscribeToProjectUpdates
-  // directly filters out the callback. An explicit subscriptionId isn't strictly necessary
-  // for *this specific stub's internal logic* for unsubscribing a single listener,
-  // but if the subscription mechanism were more complex (e.g. server-managed IDs), this would be used.
-  console.log(`[ClientSimService] Call to unsubscribeFromSingleProjectUpdate with ID: ${subscriptionId}. Specific logic depends on how sub IDs are tracked.`);
-  // For this stub, the actual unsubscription happens when the function returned by `subscribeToProjectUpdates` is called.
-  // If we had a map of subscriptionId -> callback, we would use subscriptionId here.
-  // Since we don't, this function can be a no-op or log for now, as the primary mechanism is the direct unsubscribe.
-  await new Promise(resolve => setTimeout(resolve, 10));
+
+// --- Functions for Dashboard Page ---
+
+const DEFAULT_EMPTY_TEXT_CONTENT = "<p></p>";
+const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = {
+  elements: [],
+  appState: { ZenModeEnabled: false, viewModeEnabled: false },
+  files: {}
+};
+
+const ensureNodeContentDefaults = (nodes: FileSystemNode[]): FileSystemNode[] => {
+  return nodes.map(node => ({
+    ...node,
+    textContent: node.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
+    whiteboardContent: node.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
+    ...(node.children && { children: ensureNodeContentDefaults(node.children) }),
+  }));
+};
+
+export async function getAllProjectsFromFirestore(): Promise<Project[]> {
+  console.log('[FirestoreService] Fetching all projects for dashboard');
+  try {
+    const projectsColRef = collection(db, PROJECTS_COLLECTION);
+    // Order by 'updatedAt' in descending order to show newest first
+    const q = query(projectsColRef, orderBy('updatedAt', 'desc'));
+    const querySnapshot = await getDocs(q);
+    const projects = querySnapshot.docs.map(docSnap => convertTimestamps(docSnap.data()) as Project);
+    console.log(`[FirestoreService] Fetched ${projects.length} projects.`);
+    return projects.map(p => ({ // Ensure defaults on load for dashboard too
+      ...p,
+      textContent: p.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
+      whiteboardContent: p.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
+      fileSystemRoots: ensureNodeContentDefaults(p.fileSystemRoots || [])
+    }));
+  } catch (error) {
+    console.error('[FirestoreService] Error fetching all projects:', error);
+    throw error;
+  }
+}
+
+export async function createProjectInFirestore(newProjectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>): Promise<Project> {
+  console.log('[FirestoreService] Creating new project in Firestore:', newProjectData.name);
+  try {
+    const newProjectId = crypto.randomUUID();
+    const now = new Date().toISOString();
+    const projectToCreate: Project = {
+      ...newProjectData,
+      id: newProjectId,
+      createdAt: now,
+      updatedAt: now,
+      fileSystemRoots: ensureNodeContentDefaults(newProjectData.fileSystemRoots || []),
+      textContent: newProjectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
+      whiteboardContent: newProjectData.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA},
+    };
+    
+    const projectDocRef = doc(db, PROJECTS_COLLECTION, newProjectId);
+    await setDoc(projectDocRef, projectToCreate);
+    console.log(`[FirestoreService] Project "${projectToCreate.name}" (ID: ${newProjectId}) created.`);
+    return projectToCreate;
+  } catch (error) {
+    console.error('[FirestoreService] Error creating project:', error);
+    throw error;
+  }
+}
+
+export async function deleteProjectFromFirestore(projectId: string): Promise<void> {
+  console.log(`[FirestoreService] Deleting project: ${projectId}`);
+  try {
+    const projectDocRef = doc(db, PROJECTS_COLLECTION, projectId);
+    await deleteDoc(projectDocRef);
+    console.log(`[FirestoreService] Project ${projectId} deleted.`);
+  } catch (error) {
+    console.error(`[FirestoreService] Error deleting project ${projectId}:`, error);
+    throw error;
+  }
 }

@@ -44,12 +44,12 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useProjectContext } from "@/contexts/ProjectContext";
 import { FileExplorer } from "@/components/FileExplorer";
-import { dbGetProjectById, dbSaveProject, dbDeleteProject } from "@/lib/indexedDB";
+// import { dbGetProjectById, dbSaveProject, dbDeleteProject } from "@/lib/indexedDB"; // No longer using IndexedDB for primary project operations
 import {
   loadProjectData as realtimeLoadProjectData,
   saveProjectData as realtimeSaveProjectData,
   subscribeToProjectUpdates as realtimeSubscribeToProjectUpdates,
-  unsubscribeFromAllProjectUpdates as realtimeUnsubscribeFromAllProjectUpdates
+  deleteProjectFromFirestore // For deleting the entire project
 } from "@/services/realtimeCollaborationService";
 
 
@@ -214,16 +214,29 @@ export default function ProjectPage() {
 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pendingSaveDataRef = useRef<{ project: Project } | null>(null);
-  const isSavingRef = useRef(false); // To prevent concurrent saves
+  const isSavingRef = useRef(false);
+  const lastSavedToServerTimestampRef = useRef<string | null>(null);
+  const lastLocalUpdateTimestampRef = useRef<string | null>(null);
 
-  const updateLocalStateFromProject = useCallback((projectData: Project | null) => {
+
+  const updateLocalStateFromProject = useCallback((projectData: Project | null, source: "initialLoad" | "realtimeUpdate" = "initialLoad") => {
     if (!projectData) return;
+
+    if (source === "realtimeUpdate" && lastSavedToServerTimestampRef.current && projectData.updatedAt <= lastSavedToServerTimestampRef.current) {
+      console.log("[Realtime] Received update is older or same as last server save, skipping to prevent stale data overwrite:", projectData.updatedAt, "vs", lastSavedToServerTimestampRef.current);
+      return;
+    }
+     if (source === "realtimeUpdate" && lastLocalUpdateTimestampRef.current && projectData.updatedAt < lastLocalUpdateTimestampRef.current) {
+      console.log("[Realtime] Received update is older than last local change that might be pending save, skipping:", projectData.updatedAt, "vs", lastLocalUpdateTimestampRef.current);
+      return;
+    }
+
 
     const ensuredFileSystemRoots = ensureNodeContentRecursive(projectData.fileSystemRoots || []);
     
     setCurrentProject({...projectData, fileSystemRoots: ensuredFileSystemRoots});
     setEditingProjectName(projectData.name);
-    setCurrentProjectName(projectData.name); // Update context
+    setCurrentProjectName(projectData.name);
     
     const rootText = projectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT;
     const rootBoard = projectData.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA};
@@ -245,7 +258,11 @@ export default function ProjectPage() {
       setActiveWhiteboardData({...rootBoard});
       activeWhiteboardDataRef.current = {...rootBoard};
     }
-  }, [setCurrentProjectName, selectedFileNodeId]);
+    if (source === "realtimeUpdate") {
+        toast({ title: "Project Updated", description: "Changes received from collaborators.", duration: 2000 });
+    }
+
+  }, [setCurrentProjectName, selectedFileNodeId, toast]);
 
 
   useEffect(() => {
@@ -257,40 +274,36 @@ export default function ProjectPage() {
       setIsLoadingProject(true);
       try {
         let projectData = await realtimeLoadProjectData(projectId);
-        let source = "Realtime";
-
-        if (!projectData) {
-          projectData = await dbGetProjectById(projectId);
-          source = "IndexedDB";
-        }
         
         if (projectData) {
-          console.log(`Project loaded from ${source}`);
-          updateLocalStateFromProject(projectData);
+          console.log(`[ProjectPage] Project ${projectId} loaded from Firestore.`);
+          updateLocalStateFromProject(projectData, "initialLoad");
+          lastSavedToServerTimestampRef.current = projectData.updatedAt;
 
-          const unsubFn = await realtimeSubscribeToProjectUpdates(projectId, (updatedProject) => {
-            console.log("[Realtime] Received project update from subscription:", updatedProject.name, updatedProject.updatedAt);
+
+          unsubscribeRealtime = await realtimeSubscribeToProjectUpdates(projectId, (updatedProject) => {
+            console.log("[ProjectPage Realtime] Received project update from subscription:", updatedProject.name, updatedProject.updatedAt);
             if (isSavingRef.current) {
-                console.log("[Realtime] Save in progress, skipping update from subscription for now.");
+                console.log("[ProjectPage Realtime] Save in progress, skipping update from subscription for now.");
                 return;
             }
-            const currentProjectSnapshot = currentProject; 
-            if (currentProjectSnapshot && new Date(updatedProject.updatedAt) < new Date(currentProjectSnapshot.updatedAt)) {
-                console.log("[Realtime] Incoming update is older than current state, skipping.");
+             // More robust check against local state (currentProject snapshot)
+            if (currentProject && new Date(updatedProject.updatedAt) <= new Date(currentProject.updatedAt)) {
+                console.log("[ProjectPage Realtime] Incoming update is older or same as current client state, skipping to prevent race condition.", updatedProject.updatedAt, "vs", currentProject.updatedAt);
                 return;
             }
-            toast({ title: "Project Updated", description: "Changes received from collaborators.", duration: 2000 });
-            updateLocalStateFromProject(updatedProject);
+
+            updateLocalStateFromProject(updatedProject, "realtimeUpdate");
+            lastSavedToServerTimestampRef.current = updatedProject.updatedAt; // Update with timestamp from server
           });
-          unsubscribeRealtime = unsubFn;
 
         } else {
           toast({ title: "Error", description: "Project not found.", variant: "destructive" });
           router.replace("/");
         }
       } catch (error) {
-        console.error("Failed to fetch project:", error);
-        toast({ title: "Error", description: `Could not load project data: ${(error as Error).message}`, variant: "destructive" });
+        console.error("[ProjectPage] Failed to fetch project:", error);
+        toast({ title: "Error Loading Project", description: `Could not load project data: ${(error as Error).message}`, variant: "destructive" });
         router.replace("/");
       } finally {
         setIsLoadingProject(false);
@@ -315,19 +328,12 @@ export default function ProjectPage() {
       setCurrentProjectName(null);
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       if (unsubscribeRealtime) {
+        console.log("[ProjectPage] Unsubscribing from Firestore updates for project:", projectId);
         unsubscribeRealtime();
-      } else {
-        (async () => {
-          try {
-            if(projectId) await realtimeUnsubscribeFromAllProjectUpdates(projectId);
-          } catch (e) {
-             console.error("Error unsubscribing from all project updates during cleanup:", e);
-          }
-        })();
       }
     };
-  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder]); 
-  // Removed updateLocalStateFromProject from dependency array
+  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder, updateLocalStateFromProject]);
+  // Added updateLocalStateFromProject to dependency array.
 
   useEffect(() => {
     activeWhiteboardDataRef.current = activeWhiteboardData;
@@ -337,18 +343,22 @@ export default function ProjectPage() {
     if (!projectToSave || isSavingRef.current) return;
     
     isSavingRef.current = true;
+    const timestampForThisSave = new Date().toISOString();
+    const finalProjectToSave = {...projectToSave, updatedAt: timestampForThisSave};
+    
     try {
-      await dbSaveProject(projectToSave);
-      await realtimeSaveProjectData(projectToSave);
+      // await dbSaveProject(finalProjectToSave); // No longer saving to IndexedDB as primary
+      await realtimeSaveProjectData(finalProjectToSave);
+      lastSavedToServerTimestampRef.current = timestampForThisSave; // Update with the timestamp we sent
 
-      if (projectToSave.name !== currentProjectNameFromContext) {
-        setCurrentProjectName(projectToSave.name);
+      if (finalProjectToSave.name !== currentProjectNameFromContext) {
+        setCurrentProjectName(finalProjectToSave.name);
       }
       if (!saveTimeoutRef.current) { 
-          toast({ title: "Progress Saved", description: "Your changes have been saved locally and synced.", duration: 2000 });
+          toast({ title: "Progress Saved", description: "Your changes have been synced to the cloud.", duration: 2000 });
       }
     } catch (error) {
-      console.error("Failed to save project:", error);
+      console.error("[ProjectPage] Failed to save project to Firestore:", error);
       toast({ title: "Save Error", description: `Could not save project: ${(error as Error).message}`, variant: "destructive" });
     } finally {
       isSavingRef.current = false;
@@ -359,6 +369,9 @@ export default function ProjectPage() {
   useEffect(() => {
     if (!mounted || isLoadingProject || !currentProject) return;
 
+    const currentLocalTimestamp = new Date().toISOString();
+    lastLocalUpdateTimestampRef.current = currentLocalTimestamp;
+
     const constructProjectDataToSave = (): Project => {
       return {
         id: currentProject.id,
@@ -367,7 +380,7 @@ export default function ProjectPage() {
         fileSystemRoots: [...activeFileSystemRoots], 
         textContent: projectRootTextContent, 
         whiteboardContent: projectRootWhiteboardData, 
-        updatedAt: new Date().toISOString(),
+        updatedAt: currentLocalTimestamp, // This will be overwritten by performSave with its own timestamp
       };
     };
     
@@ -384,7 +397,7 @@ export default function ProjectPage() {
         pendingSaveDataRef.current = null; 
         saveTimeoutRef.current = null; 
         await performSave(projectBeingSaved);
-        toast({ title: "Auto-Saved", description: "Changes automatically saved.", duration: 2000});
+        toast({ title: "Auto-Saved", description: "Changes automatically saved to cloud.", duration: 2000});
       }
     }, 2000); 
 
@@ -440,26 +453,24 @@ export default function ProjectPage() {
         const updatedProjectDataForNameChange = { 
             ...currentProject, 
             name: newName, 
-            updatedAt: new Date().toISOString(),
+            // updatedAt will be set by performSave
             textContent: projectRootTextContent,
             whiteboardContent: projectRootWhiteboardData,
             fileSystemRoots: activeFileSystemRoots,
         };
         try {
-          
           if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
             clearTimeout(saveTimeoutRef.current);
             saveTimeoutRef.current = null;
             await performSave(pendingSaveDataRef.current.project); 
             pendingSaveDataRef.current = null;
           } else if (pendingSaveDataRef.current?.project && !saveTimeoutRef.current) {
-             
              await performSave(pendingSaveDataRef.current.project);
              pendingSaveDataRef.current = null;
           }
           
           await performSave(updatedProjectDataForNameChange); 
-          setCurrentProject(updatedProjectDataForNameChange); 
+          setCurrentProject(prev => prev ? {...prev, name: newName, updatedAt: new Date().toISOString()} : null);
           setCurrentProjectName(newName);    
           toast({title: "Project Renamed", description: `Project name updated to "${newName}".`});
         } catch (error) {
@@ -477,11 +488,11 @@ export default function ProjectPage() {
   const confirmDeleteProject = useCallback(async () => {
     if (!currentProject) return;
     try {
-      await dbDeleteProject(currentProject.id);
-      toast({ title: "Project Deleted", description: `"${currentProject.name}" has been deleted.` });
+      await deleteProjectFromFirestore(currentProject.id); // Use Firestore delete
+      toast({ title: "Project Deleted", description: `"${currentProject.name}" has been deleted from the cloud.` });
       router.replace("/");
     } catch (error) {
-      toast({ title: "Error", description: "Could not delete project.", variant: "destructive" });
+      toast({ title: "Error Deleting Project", description: "Could not delete project from cloud.", variant: "destructive" });
     }
   }, [currentProject, router, toast]);
 
@@ -512,8 +523,9 @@ export default function ProjectPage() {
     };
     
     setActiveFileSystemRoots(prevRoots => addNodeToTreeRecursive(prevRoots, parentIdForNewItem, newNode));
+    // This change is local and will be picked up by the auto-save mechanism to Firestore
 
-    toast({ title: `${newItemType === 'file' ? 'File' : 'Folder'} Created`, description: `"${newNode.name}" added.`});
+    toast({ title: `${newItemType === 'file' ? 'File' : 'Folder'} Created`, description: `"${newNode.name}" added locally. Will sync shortly.`});
     setIsNewItemDialogOpen(false);
     setNewItemType(null);
   }, [newItemName, newItemType, parentIdForNewItem, toast]);
@@ -524,7 +536,6 @@ export default function ProjectPage() {
         toast({ title: "Saving...", description: "Please wait for current changes to save before switching items.", duration: 1500});
         return;
     }
-
     
     if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
       clearTimeout(saveTimeoutRef.current);
@@ -532,7 +543,6 @@ export default function ProjectPage() {
       await performSave(pendingSaveDataRef.current.project); 
       pendingSaveDataRef.current = null; 
     } else if (pendingSaveDataRef.current?.project && !saveTimeoutRef.current) {
-      
       await performSave(pendingSaveDataRef.current.project);
       pendingSaveDataRef.current = null;
     }
@@ -546,16 +556,11 @@ export default function ProjectPage() {
         setActiveWhiteboardData(newBoardData);
         activeWhiteboardDataRef.current = newBoardData; 
     } else { 
-        
         setActiveTextContent(projectRootTextContent);
         setActiveWhiteboardData({...projectRootWhiteboardData});
         activeWhiteboardDataRef.current = {...projectRootWhiteboardData};
     }
-  }, [
-    performSave, 
-    projectRootTextContent, projectRootWhiteboardData, 
-    toast, 
-  ]);
+  }, [performSave, projectRootTextContent, projectRootWhiteboardData, toast]);
 
 
   const handleDeleteNodeRequest = useCallback((nodeId: string) => {
@@ -564,7 +569,6 @@ export default function ProjectPage() {
 
   const confirmDeleteNode = useCallback(async () => {
     if (!nodeToDeleteId || !currentProject || isSavingRef.current) return;
-
     
     if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
       clearTimeout(saveTimeoutRef.current);
@@ -579,7 +583,7 @@ export default function ProjectPage() {
     const nodeBeingDeleted = findNodeByIdRecursive(activeFileSystemRoots, nodeToDeleteId);
     const newRoots = deleteNodeFromTreeRecursive(activeFileSystemRoots, nodeToDeleteId);
     setActiveFileSystemRoots(newRoots); 
-
+    // This local change will trigger auto-save to Firestore
     
     if (selectedFileNodeId === nodeToDeleteId) {
         setSelectedFileNodeId(null); 
@@ -587,7 +591,7 @@ export default function ProjectPage() {
         setActiveWhiteboardData({...projectRootWhiteboardData});
         activeWhiteboardDataRef.current = {...projectRootWhiteboardData};
     }
-    toast({ title: "Item Deleted", description: `"${nodeBeingDeleted?.name || 'Item'}" has been removed.` });
+    toast({ title: "Item Deleted", description: `"${nodeBeingDeleted?.name || 'Item'}" removed locally. Will sync shortly.` });
     setNodeToDeleteId(null); 
   }, [
     nodeToDeleteId, selectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, 
@@ -642,8 +646,9 @@ export default function ProjectPage() {
       }
       
       const newRootsWithMovedNode = addNodeToTargetInTree(treeWithoutDraggedNode, targetFolderId, removedNode);
+      // This local change will trigger auto-save to Firestore.
       
-      toast({ title: "Item Moved", description: `"${removedNode.name}" moved.` });
+      toast({ title: "Item Moved", description: `"${removedNode.name}" moved locally. Will sync shortly.` });
       return newRootsWithMovedNode;
     });
   }, [toast]);
@@ -657,7 +662,7 @@ export default function ProjectPage() {
                 <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2">
                     <ArrowLeft className="h-5 w-5" />
                 </Button>
-                <h1 className="text-lg font-semibold">Loading Project...</h1>
+                <h1 className="text-lg font-semibold">Loading Project from Cloud...</h1>
                 <Loader2 className="ml-2 h-5 w-5 animate-spin" />
             </div>
         </header>
@@ -669,6 +674,9 @@ export default function ProjectPage() {
     );
   }
   
+  const editorKey = selectedFileNodeId || 'project-root-editor';
+  const whiteboardKey = selectedFileNodeId || 'project-root-whiteboard';
+
   return (
     <div className="flex h-screen flex-col fixed inset-0 pt-14">  
        <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-14">
@@ -754,7 +762,7 @@ export default function ProjectPage() {
                   <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                   <AlertDialogDescription>
                     This action cannot be undone. This will permanently delete the
-                    project "{currentProject.name}".
+                    project "{currentProject.name}" from the cloud.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -791,7 +799,8 @@ export default function ProjectPage() {
           <ResizablePanel defaultSize={isExplorerVisible ? 80 : 100} className="flex flex-col">
             {viewMode === "editor" && (
               <div className="h-full p-1 sm:p-2 md:p-3">
-                <RichTextEditor 
+                <RichTextEditor
+                  key={editorKey} 
                   value={activeTextContent} 
                   onChange={handleTextChange}
                 />
@@ -800,7 +809,7 @@ export default function ProjectPage() {
             {viewMode === "whiteboard" && (
               <div className="h-full p-1 sm:p-2 md:p-3">
                 <Whiteboard
-                  key={selectedFileNodeId || 'project-root-whiteboard'}
+                  key={whiteboardKey}
                   initialData={activeWhiteboardData}
                   onChange={handleWhiteboardChange}
                   isReadOnly={false} 
@@ -812,6 +821,7 @@ export default function ProjectPage() {
                 <ResizablePanel defaultSize={50} minSize={20}>
                   <div className="h-full p-1 sm:p-2 md:p-3">
                     <RichTextEditor 
+                      key={`${editorKey}-both`}
                       value={activeTextContent} 
                       onChange={handleTextChange}
                     />
@@ -821,7 +831,7 @@ export default function ProjectPage() {
                 <ResizablePanel defaultSize={50} minSize={20}>
                   <div className="h-full p-1 sm:p-2 md:p-3">
                     <Whiteboard
-                      key={selectedFileNodeId || 'project-root-whiteboard-both'}
+                      key={`${whiteboardKey}-both`}
                       initialData={activeWhiteboardData}
                       onChange={handleWhiteboardChange}
                       isReadOnly={false}
@@ -886,6 +896,7 @@ export default function ProjectPage() {
             <AlertDialogDescription>
               This action cannot be undone. This will permanently delete the selected item
               {currentProject && activeFileSystemRoots && findNodeByIdRecursive(activeFileSystemRoots, nodeToDeleteId || '')?.type === 'folder' && ' and all its contents'}.
+              This will sync to the cloud.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -899,4 +910,3 @@ export default function ProjectPage() {
     </div>
   );
 }
-
