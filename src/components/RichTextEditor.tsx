@@ -29,7 +29,7 @@ import {
   AlignRight, 
   AlignJustify, 
   ListCollapse, // Used for Summarize
-  MessageSquareQuestion, // New icon for Ask AI
+  MessageSquareQuote, // Changed from MessageSquareQuestion to MessageSquareQuote
 } from "lucide-react";
 import { AITextEnhancementDialog } from "./AITextEnhancementDialog";
 import { AskAiDialog } from "./AskAiDialog"; // Added AskAiDialog
@@ -303,7 +303,7 @@ const TipTapToolbar = ({
           title="Ask AI"
           disabled={isAiLoading}
         >
-          {isAiLoading && activeAiTool === 'askAi' ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareQuestion className="h-4 w-4" />}
+          {isAiLoading && activeAiTool === 'askAi' ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareQuote className="h-4 w-4" />}
         </Button>
         <Button
           onClick={onAiEnhance}
@@ -781,3 +781,5 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     </div>
   );
 }
+
+    
