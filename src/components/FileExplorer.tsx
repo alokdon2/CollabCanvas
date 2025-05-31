@@ -5,14 +5,14 @@ import { useState, useCallback } from "react";
 import type { FileSystemNode } from "@/lib/types";
 import { FileNodeItem } from "./FileNodeItem";
 import { ScrollArea } from "@/components/ui/scroll-area";
-// Removed: useToast, Add File/Folder buttons as they are now in global navbar
 
 interface FileExplorerProps {
   nodes: FileSystemNode[];
-  onNodeSelect?: (node: FileSystemNode | null) => void;
-  onDeleteNode: (nodeId: string) => void; // To request deletion
-  onAddFileToFolder: (folderId: string | null) => void; // New prop
-  onAddFolderToFolder: (folderId: string | null) => void; // New prop
+  onNodeSelect?: (node: FileSystemNode | null) => void; // Can be null if clearing selection
+  onDeleteNode: (nodeId: string) => void; 
+  onAddFileToFolder: (folderId: string | null) => void; 
+  onAddFolderToFolder: (folderId: string | null) => void;
+  selectedNodeId: string | null; // To manage selected state from parent
 }
 
 export function FileExplorer({ 
@@ -20,10 +20,11 @@ export function FileExplorer({
     onNodeSelect, 
     onDeleteNode,
     onAddFileToFolder,
-    onAddFolderToFolder 
+    onAddFolderToFolder,
+    selectedNodeId
 }: FileExplorerProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
-  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  // selectedNodeId is now managed by the parent (ProjectPage)
 
   const handleToggleExpand = useCallback((nodeId: string) => {
     setExpandedFolders((prev) => {
@@ -38,9 +39,8 @@ export function FileExplorer({
   }, []);
 
   const handleNodeClick = useCallback((node: FileSystemNode) => {
-    setSelectedNodeId(node.id);
     if (onNodeSelect) {
-      onNodeSelect(node);
+      onNodeSelect(node); // Pass the full node up
     }
   }, [onNodeSelect]);
 
@@ -51,19 +51,18 @@ export function FileExplorer({
         node={node}
         level={level}
         onToggleExpand={handleToggleExpand}
-        onNodeClick={handleNodeClick}
+        onNodeClick={handleNodeClick} // This will pass the full node to the handler
         expandedFoldersInExplorer={expandedFolders}
-        selectedNodeIdInExplorer={selectedNodeId}
-        onDeleteNode={onDeleteNode} // Pass down delete handler
-        onAddFileToFolder={onAddFileToFolder} // Pass down add file handler
-        onAddFolderToFolder={onAddFolderToFolder} // Pass down add folder handler
+        selectedNodeIdInExplorer={selectedNodeId} // Use prop for selected state
+        onDeleteNode={onDeleteNode}
+        onAddFileToFolder={onAddFileToFolder}
+        onAddFolderToFolder={onAddFolderToFolder}
       />
     ));
   };
 
   return (
     <div className="h-full w-full flex flex-col bg-card text-card-foreground rounded-lg border shadow-sm p-2">
-      {/* "New File/Folder" buttons removed from here, handled by global navbar + ProjectContext */}
       <ScrollArea className="flex-grow">
         <div className="space-y-0.5">
           {nodes.length > 0 ? (
@@ -71,6 +70,8 @@ export function FileExplorer({
           ) : (
             <p className="p-4 text-sm text-muted-foreground text-center">
               No files or folders.
+              <br />
+              Use the '+' in the top bar to add items.
             </p>
           )}
         </div>
