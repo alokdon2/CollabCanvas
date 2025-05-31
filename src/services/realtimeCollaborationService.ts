@@ -1,4 +1,5 @@
 
+
 /**
  * @fileOverview Service for real-time collaboration using Firebase Firestore.
  */
@@ -29,7 +30,7 @@ const transformExcalidrawPointsForSave = (elements: readonly ExcalidrawElement[]
         return {
           ...el,
           points: el.points.map(p => ({ x: (p as [number,number])[0], y: (p as [number,number])[1] })),
-        } as ExcalidrawElement; // Cast necessary because 'points' type changes
+        } as ExcalidrawElement; 
       }
     }
     return el;
@@ -45,7 +46,7 @@ const transformExcalidrawPointsOnLoad = (elements: readonly ExcalidrawElement[] 
         return {
           ...el,
           points: el.points.map(p => [(p as {x:number,y:number}).x, (p as {x:number,y:number}).y]),
-        } as ExcalidrawElement; // Cast necessary
+        } as ExcalidrawElement; 
       }
     }
     return el;
@@ -97,24 +98,42 @@ const convertTimestamps = (data: any): any => {
   return data;
 };
 
-// Helper to sanitize data for Firestore (e.g., convert Maps to Objects)
+// Helper to sanitize data for Firestore (e.g., convert Maps to Objects, remove undefined)
 const sanitizeDataForFirestore = (data: any): any => {
+  if (data === undefined) {
+    return undefined; // Caller should omit keys with undefined values
+  }
+  if (data === null || typeof data !== 'object' || data instanceof Timestamp || data instanceof Date) {
+    return data;
+  }
+
   if (data instanceof Map) {
-    return Object.fromEntries(data);
-  }
-  if (Array.isArray(data)) {
-    return data.map(item => sanitizeDataForFirestore(item));
-  }
-  if (data && typeof data === 'object' && !(data instanceof Timestamp) && !(data instanceof Date) ) {
-    const sanitizedObject: { [key: string]: any } = {};
-    for (const key in data) {
-      if (Object.prototype.hasOwnProperty.call(data, key)) {
-        sanitizedObject[key] = sanitizeDataForFirestore(data[key]);
+    const obj: { [key: string]: any } = {};
+    for (const [key, value] of data.entries()) {
+      const sanitizedValue = sanitizeDataForFirestore(value);
+      if (sanitizedValue !== undefined) {
+        obj[key] = sanitizedValue;
       }
     }
-    return sanitizedObject;
+    return obj;
   }
-  return data;
+
+  if (Array.isArray(data)) {
+    return data.map(item => sanitizeDataForFirestore(item)).filter(item => item !== undefined);
+  }
+
+  // Generic object processing
+  const sanitizedObject: { [key: string]: any } = {};
+  for (const key in data) {
+    if (Object.prototype.hasOwnProperty.call(data, key)) {
+      const value = data[key];
+      const sanitizedValue = sanitizeDataForFirestore(value);
+      if (sanitizedValue !== undefined) {
+        sanitizedObject[key] = sanitizedValue;
+      }
+    }
+  }
+  return sanitizedObject;
 };
 
 
@@ -153,40 +172,9 @@ export async function saveProjectData(project: Project): Promise<void> {
     let projectToSave = JSON.parse(JSON.stringify(project)); 
 
     projectToSave = transformProjectPoints(projectToSave, transformExcalidrawPointsForSave);
-
-    if (projectToSave.whiteboardContent && projectToSave.whiteboardContent.appState && projectToSave.whiteboardContent.appState.collaborators) {
-      if (projectToSave.whiteboardContent.appState.collaborators instanceof Map) {
-         projectToSave.whiteboardContent.appState.collaborators = Object.fromEntries(projectToSave.whiteboardContent.appState.collaborators);
-      } else if (typeof projectToSave.whiteboardContent.appState.collaborators !== 'object' || Array.isArray(projectToSave.whiteboardContent.appState.collaborators)) {
-         delete projectToSave.whiteboardContent.appState.collaborators; // if it's not a map or plain object, remove
-      }
-    }
-    
-    // Sanitize collaborators in file system nodes as well
-    const sanitizeNodeCollaborators = (nodes: FileSystemNode[]): FileSystemNode[] => {
-        return nodes.map(node => {
-            let newWhiteboardContent = node.whiteboardContent;
-            if (newWhiteboardContent && newWhiteboardContent.appState && newWhiteboardContent.appState.collaborators) {
-                 if (newWhiteboardContent.appState.collaborators instanceof Map) {
-                    newWhiteboardContent.appState.collaborators = Object.fromEntries(newWhiteboardContent.appState.collaborators);
-                } else if (typeof newWhiteboardContent.appState.collaborators !== 'object' || Array.isArray(newWhiteboardContent.appState.collaborators)) {
-                    delete newWhiteboardContent.appState.collaborators;
-                }
-            }
-            return {
-                ...node,
-                whiteboardContent: newWhiteboardContent,
-                children: node.children ? sanitizeNodeCollaborators(node.children) : undefined,
-            };
-        });
-    };
-
-    if (projectToSave.fileSystemRoots) {
-        projectToSave.fileSystemRoots = sanitizeNodeCollaborators(projectToSave.fileSystemRoots);
-    }
     
     const finalProjectToSave = {
-      ...sanitizeDataForFirestore(projectToSave),
+      ...sanitizeDataForFirestore(projectToSave), // Sanitize the whole object
       updatedAt: new Date().toISOString(), 
     };
     
@@ -303,34 +291,17 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
     };
 
     projectToCreate = transformProjectPoints(projectToCreate, transformExcalidrawPointsForSave);
-    
-    if (projectToCreate.whiteboardContent && projectToCreate.whiteboardContent.appState && projectToCreate.whiteboardContent.appState.collaborators) {
-        delete projectToCreate.whiteboardContent.appState.collaborators;
-    }
-     // Sanitize collaborators in file system nodes as well for creation
-    const sanitizeNodeCollaborators = (nodes: FileSystemNode[]): FileSystemNode[] => {
-        return nodes.map(node => {
-            let newWbContent = node.whiteboardContent;
-            if (newWbContent && newWbContent.appState && newWbContent.appState.collaborators) {
-                delete newWbContent.appState.collaborators;
-            }
-            return {
-                ...node,
-                whiteboardContent: newWbContent,
-                children: node.children ? sanitizeNodeCollaborators(node.children) : undefined,
-            };
-        });
+        
+    const finalProjectToCreate = {
+      ...sanitizeDataForFirestore(projectToCreate), // Sanitize the whole object
+      createdAt: now, // Ensure timestamps are part of the sanitized object
+      updatedAt: now,
     };
-    if (projectToCreate.fileSystemRoots) {
-        projectToCreate.fileSystemRoots = sanitizeNodeCollaborators(projectToCreate.fileSystemRoots);
-    }
-    
-    const finalProjectToCreate = sanitizeDataForFirestore(projectToCreate);
     
     const projectDocRef = doc(db, PROJECTS_COLLECTION, newProjectId);
     await setDoc(projectDocRef, finalProjectToCreate);
     console.log(`[FirestoreService] Project "${finalProjectToCreate.name}" (ID: ${newProjectId}) created.`);
-    // Transform back for return consistency if needed, though client should get transformed from load
+    
     let returnProject = JSON.parse(JSON.stringify(finalProjectToCreate)) as Project;
     returnProject = transformProjectPoints(returnProject, transformExcalidrawPointsOnLoad);
     return returnProject;
