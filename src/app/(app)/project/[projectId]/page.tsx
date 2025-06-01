@@ -50,9 +50,9 @@ import {
   saveProjectData as realtimeSaveProjectData,
   subscribeToProjectUpdates as realtimeSubscribeToProjectUpdates,
   deleteProjectFromFirestore,
-  ensureNodeContentDefaults,
-  processDataObjectWhiteboardContent,
-  sanitizeDataForFirestore,
+  ensureNodeContentDefaults, // Still useful for client-side defaults after load if needed
+  // processDataObjectWhiteboardContent, // Blob strategy handles processing within service
+  // sanitizeDataForFirestore, // Blob strategy handles processing within service
 } from "@/services/realtimeCollaborationService";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -157,10 +157,10 @@ const findParentId = (nodes: FileSystemNode[], childId: string, parentId: string
         if (node.id === childId) return parentId;
         if (node.children) {
             const foundInChild = findParentId(node.children, childId, node.id);
-            if (foundInChild !== undefined) return foundInChild; // Allow returning null if found at root's child
+            if (foundInChild !== undefined) return foundInChild; 
         }
     }
-    return undefined; // Or null if you prefer consistent null return for "not found" or "is root itself"
+    return undefined; 
 };
 
 
@@ -169,7 +169,7 @@ function ProjectPageContent() {
   const params = useParams();
   const projectId = params.projectId as string;
   const { toast } = useToast();
-  const { setCurrentProjectName: setGlobalProjectName } = useProjectContext(); // Renamed for clarity
+  const { setCurrentProjectName: setGlobalProjectName } = useProjectContext(); 
   const { user: authUser } = useAuth();
 
   const searchParams = useSearchParams();
@@ -179,11 +179,13 @@ function ProjectPageContent() {
   const [isLoadingProject, setIsLoadingProject] = useState(true);
   const [isReadOnlyView, setIsReadOnlyView] = useState(initialIsShared);
 
+  // States derived from currentProject
   const [editingProjectName, setEditingProjectName] = useState("");
   const [activeFileSystemRoots, setActiveFileSystemRoots] = useState<FileSystemNode[]>([]);
   const [projectRootTextContent, setProjectRootTextContent] = useState(DEFAULT_EMPTY_TEXT_CONTENT);
   const [projectRootWhiteboardData, setProjectRootWhiteboardData] = useState<WhiteboardData>({...DEFAULT_EMPTY_WHITEBOARD_DATA});
-
+  
+  // Active content for editors (can be root or selected file)
   const [activeTextContent, setActiveTextContent] = useState(DEFAULT_EMPTY_TEXT_CONTENT);
   const activeWhiteboardDataRef = useRef<WhiteboardData>({...DEFAULT_EMPTY_WHITEBOARD_DATA});
 
@@ -205,11 +207,13 @@ function ProjectPageContent() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // This ref stores the timestamp of the save operation our client LAST INITIATED.
+  // It's used to compare against incoming Firestore updates to see if they are just echoes of our own save.
   const lastSavedToServerTimestampRef = useRef<string | null>(null);
 
   const { registerTriggerNewFile, registerTriggerNewFolder } = useProjectContext();
 
-
+  // --- Dialog and UI Triggers ---
   const handleOpenNewItemDialog = useCallback((type: 'file' | 'folder', parentNodeId: string | null) => {
     if (isReadOnlyView) {
       toast({ title: "Read-Only Mode", description: "Cannot create new items in read-only view.", variant: "default" });
@@ -227,71 +231,68 @@ function ProjectPageContent() {
     handleOpenNewItemDialogRef.current = handleOpenNewItemDialog;
   }, [handleOpenNewItemDialog]);
 
-  // Effect to derive specific content states from currentProject
-  useEffect(() => {
-    if (currentProject) {
-        setActiveFileSystemRoots(ensureNodeContentDefaults(currentProject.fileSystemRoots || []));
-        setProjectRootTextContent(currentProject.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
-        setProjectRootWhiteboardData(processDataObjectWhiteboardContent({ whiteboardContent: currentProject.whiteboardContent } as any, 'load').whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA });
-        setEditingProjectName(currentProject.name);
-        setGlobalProjectName(currentProject.name);
-    }
-  }, [currentProject, setGlobalProjectName]);
-  
 
-  // Effect for initial data load from Firestore
+  // --- Data Loading and Initialization ---
   useEffect(() => {
     setMounted(true);
-    if (!projectId || !mounted) return;
-    
-    let isSubscribed = true; // To prevent state updates after unmount
-
+    // Initial data fetch
     async function fetchAndInitializeProject() {
+      if (!projectId) return;
       console.log("[ProjectPage] Starting fetchAndInitializeProject for", projectId);
-      if (!isLoadingProject) setIsLoadingProject(true); // Ensure loading state is true
+      if (!isLoadingProject) setIsLoadingProject(true);
 
       try {
         const projectDataFromDB = await realtimeLoadProjectData(projectId);
-        if (!isSubscribed) return;
+        if (!mounted) return; // Component unmounted
 
         if (projectDataFromDB) {
           console.log(`[ProjectPage] Project ${projectId} data loaded from DB.`);
-          const processedData = processDataObjectWhiteboardContent(projectDataFromDB, 'load') as Project;
+          setCurrentProject(projectDataFromDB); // This will trigger the effect below to set derived states
           
-          setCurrentProject(processedData);
-          // Derived states will be updated by the useEffect depending on currentProject
-          
+          // Initial sync status based on loaded data
           setSaveStatus('synced');
-          setLastSyncTime(new Date(processedData.updatedAt).toLocaleTimeString());
-          lastSavedToServerTimestampRef.current = processedData.updatedAt;
+          setLastSyncTime(new Date(projectDataFromDB.updatedAt).toLocaleTimeString());
+          lastSavedToServerTimestampRef.current = projectDataFromDB.updatedAt; // Record timestamp of data we just loaded
           setSelectedFileNodeId(null); // Start with no file selected
-
         } else {
           console.log(`[ProjectPage] Project ${projectId} not found in DB.`);
           toast({ title: "Error", description: "Project not found.", variant: "destructive" });
           router.replace("/");
         }
       } catch (error) {
-        if (!isSubscribed) return;
+        if (!mounted) return;
         console.error(`[ProjectPage] Failed to fetch project ${projectId}:`, error);
         toast({ title: "Error Loading Project", description: `Could not load project data: ${(error as Error).message}`, variant: "destructive" });
         router.replace("/");
       } finally {
-        if (isSubscribed) {
-            console.log(`[ProjectPage] fetchAndInitializeProject finally block for ${projectId}. Setting isLoadingProject to false.`);
-            setIsLoadingProject(false);
+        if (mounted) {
+          console.log(`[ProjectPage] fetchAndInitializeProject finally block for ${projectId}. Setting isLoadingProject to false.`);
+          setIsLoadingProject(false);
         }
       }
     }
-
     fetchAndInitializeProject();
     
     return () => {
-        isSubscribed = false;
-        setGlobalProjectName(null);
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        setGlobalProjectName(null); // Clear global project name on unmount
     }
-  }, [projectId, mounted, router, toast, setGlobalProjectName]); // isLoadingProject removed
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, mounted, router, toast, setGlobalProjectName]); // Only run on mount and if projectId changes
+
+  // Effect to update derived states when currentProject changes
+  useEffect(() => {
+    if (currentProject) {
+      console.log("[ProjectPage] currentProject changed, updating derived states:", currentProject.name, currentProject.updatedAt);
+      setEditingProjectName(currentProject.name);
+      setGlobalProjectName(currentProject.name);
+      // ensureNodeContentDefaults can be used here if data from blob might miss some defaults.
+      // However, the service layer should ideally return fully formed objects.
+      setActiveFileSystemRoots(ensureNodeContentDefaults(currentProject.fileSystemRoots || []));
+      setProjectRootTextContent(currentProject.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
+      setProjectRootWhiteboardData(currentProject.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA });
+    }
+  }, [currentProject, setGlobalProjectName]);
 
   // Effect for Firestore real-time subscription
   useEffect(() => {
@@ -304,20 +305,23 @@ function ProjectPageContent() {
         console.log(`[ProjectPage Realtime] Setting up subscription for project ${projectId}`);
         try {
              unsubscribeRealtime = await realtimeSubscribeToProjectUpdates(projectId, (updatedProjectFromFirestore) => {
-                if (!isStillMounted) return;
-                console.log(`[ProjectPage Realtime] Subscription update for project ${projectId}:`, updatedProjectFromFirestore.name);
+                if (!isStillMounted || !updatedProjectFromFirestore) return;
+                console.log(`[ProjectPage Realtime] Subscription update for project ${projectId}:`, updatedProjectFromFirestore.name, "Updated At:", updatedProjectFromFirestore.updatedAt);
 
-                if (lastSavedToServerTimestampRef.current && updatedProjectFromFirestore.updatedAt < lastSavedToServerTimestampRef.current && updatedProjectFromFirestore.id === projectId) {
-                    console.log("[ProjectPage Realtime] Incoming Firestore update is older or same as last server save initiated by this client, skipping.", updatedProjectFromFirestore.updatedAt, "vs", lastSavedToServerTimestampRef.current);
+                // CRITICAL: Stale update check. If this client initiated a save, and the incoming update is older or same, ignore it.
+                // This prevents overwriting local state with an echo of its own save if there are subsequent local changes.
+                if (lastSavedToServerTimestampRef.current && 
+                    updatedProjectFromFirestore.id === projectId &&
+                    new Date(updatedProjectFromFirestore.updatedAt).getTime() < new Date(lastSavedToServerTimestampRef.current).getTime()) {
+                    console.warn("[ProjectPage Realtime] Incoming Firestore update is OLDER than last server save initiated by this client. Skipping update.", 
+                        "Incoming:", updatedProjectFromFirestore.updatedAt, "vs Last Sent:", lastSavedToServerTimestampRef.current);
                     return; 
                 }
                 
-                const processedUpdate = processDataObjectWhiteboardContent(updatedProjectFromFirestore, 'load') as Project;
-                setCurrentProject(processedUpdate);
-                // Derived states (activeFileSystemRoots, etc.) will update via their own useEffect
+                setCurrentProject(updatedProjectFromFirestore); // This will trigger the derived state effect
                 setSaveStatus('synced');
-                setLastSyncTime(new Date(processedUpdate.updatedAt).toLocaleTimeString());
-                lastSavedToServerTimestampRef.current = processedUpdate.updatedAt; // Update ref with confirmed DB timestamp
+                setLastSyncTime(new Date(updatedProjectFromFirestore.updatedAt).toLocaleTimeString());
+                lastSavedToServerTimestampRef.current = updatedProjectFromFirestore.updatedAt; // Update ref with confirmed DB timestamp
 
                 toast({ title: "Project Updated", description: "Changes received from collaborators.", duration: 2000 });
             });
@@ -367,13 +371,11 @@ function ProjectPageContent() {
 
   // Effect for loading content into active editor/whiteboard based on selection
   useEffect(() => {
-    // This effect now depends on the derived states, which depend on currentProject
     if (selectedFileNodeId) {
       const node = findNodeByIdRecursive(activeFileSystemRoots, selectedFileNodeId);
       if (node) {
         setActiveTextContent(node.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
-        const processedWBNode = processDataObjectWhiteboardContent(node, 'load') as FileSystemNode;
-        activeWhiteboardDataRef.current = processedWBNode.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA};
+        activeWhiteboardDataRef.current = node.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA};
       } else {
         setSelectedFileNodeId(null); // Node not found, reset selection
         setActiveTextContent(projectRootTextContent);
@@ -386,62 +388,73 @@ function ProjectPageContent() {
   }, [selectedFileNodeId, activeFileSystemRoots, projectRootTextContent, projectRootWhiteboardData]);
 
 
+  // --- Save Operations ---
   const constructProjectDataToSave = useCallback((): Project | null => {
     if (!currentProject) {
         console.error("constructProjectDataToSave called without currentProject!");
         return null;
     }
 
-    let projectSnapshot = JSON.parse(JSON.stringify(currentProject)) as Project; // Deep clone
+    // Create a snapshot of the current project to modify
+    // Important: Use the states that hold the "active" editor content
+    let projectSnapshot = JSON.parse(JSON.stringify(currentProject)) as Project; 
+
+    projectSnapshot.name = editingProjectName || projectSnapshot.name;
 
     if (selectedFileNodeId) {
         const nodeToUpdateInSnapshot = findNodeByIdRecursive(projectSnapshot.fileSystemRoots, selectedFileNodeId);
         if (nodeToUpdateInSnapshot) {
-            const updatedNode = {
+            const updatedNode: FileSystemNode = {
                 ...nodeToUpdateInSnapshot,
                 textContent: activeTextContent,
-                whiteboardContent: activeWhiteboardDataRef.current,
+                whiteboardContent: activeWhiteboardDataRef.current, // Use ref for whiteboard data
             };
             projectSnapshot.fileSystemRoots = replaceNodeInTree(projectSnapshot.fileSystemRoots, selectedFileNodeId, updatedNode);
+        } else {
+            console.warn(`[ConstructSave] Selected node ${selectedFileNodeId} not found in currentProject's file system. Saving root content instead.`);
+            projectSnapshot.textContent = activeTextContent;
+            projectSnapshot.whiteboardContent = activeWhiteboardDataRef.current;
         }
     } else {
+        // Saving root project content
         projectSnapshot.textContent = activeTextContent;
         projectSnapshot.whiteboardContent = activeWhiteboardDataRef.current;
     }
-    projectSnapshot.name = editingProjectName || projectSnapshot.name;
+    // FileSystemRoots are already part of projectSnapshot from currentProject
+    // They are updated by actions like create, delete, move node.
+    projectSnapshot.fileSystemRoots = activeFileSystemRoots; // Ensure latest explorer state is used
+
     return projectSnapshot;
-  }, [currentProject, selectedFileNodeId, activeTextContent, editingProjectName]);
+  }, [currentProject, selectedFileNodeId, activeTextContent, editingProjectName, activeFileSystemRoots]);
 
 
   const performSave = useCallback(async (projectToSave: Project): Promise<boolean> => {
-    if (isReadOnlyView) {
-      console.log("[ProjectPage] In read-only view, save skipped.");
+    if (isReadOnlyView || !authUser) {
+      console.log("[ProjectPage performSave] In read-only view or no auth user, save skipped.");
       return false;
     }
     
     setSaveStatus('saving');
     const timestampForThisSave = new Date().toISOString();
+    // Mark our intent to save with this timestamp
     lastSavedToServerTimestampRef.current = timestampForThisSave; 
 
     const finalProjectDataForFirestore: Project = {
         ...projectToSave,
-        ownerId: projectToSave.ownerId || authUser?.uid || 'unknown_owner',
-        updatedAt: timestampForThisSave, // Use the generated timestamp
+        ownerId: projectToSave.ownerId || authUser.uid, // Ensure ownerId
+        updatedAt: timestampForThisSave, // Use the generated timestamp for this save operation
     };
 
-    let processedForFirestore = processDataObjectWhiteboardContent(finalProjectDataForFirestore, 'save') as Project;
-    const sanitizedData = sanitizeDataForFirestore(processedForFirestore);
-
     try {
-      await realtimeSaveProjectData(sanitizedData as Project);
+      await realtimeSaveProjectData(finalProjectDataForFirestore);
+      console.log("[ProjectPage performSave] Save initiated to Firestore for project:", projectToSave.id, "at", timestampForThisSave);
       // DO NOT set saveStatus('synced') here. Let Firestore listener handle it.
       // DO NOT setCurrentProject here. Let Firestore listener handle it.
-      console.log("[ProjectPage performSave] Save initiated to Firestore for project:", projectToSave.id, "at", timestampForThisSave);
       return true; 
     } catch (error) {
       console.error("[ProjectPage performSave] Failed to save project to Firestore:", error);
       toast({ title: "Save Error", description: `Could not save project: ${(error as Error).message}`, variant: "destructive" });
-      setSaveStatus('error');
+      setSaveStatus('error'); // Set error status if save fails
       return false;
     }
   }, [isReadOnlyView, authUser, toast]);
@@ -449,42 +462,42 @@ function ProjectPageContent() {
 
   // Auto-save logic
   useEffect(() => {
-    if (isReadOnlyView || !mounted || isLoadingProject || !currentProject || (saveStatus !== 'idle' && saveStatus !== 'error')) {
+    // Guard against running auto-save under certain conditions
+    if (isReadOnlyView || !mounted || isLoadingProject || !currentProject || 
+        (saveStatus !== 'idle' && saveStatus !== 'error')) {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       return;
     }
 
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
-    console.log(`[Auto-Save Effect] Status: ${saveStatus}. Scheduling save.`);
+    console.log(`[Auto-Save Effect] Status: ${saveStatus}. Scheduling save for project: ${currentProject?.id}`);
     saveTimeoutRef.current = setTimeout(async () => {
+      // Re-check conditions inside timeout, as state might have changed
       if (isReadOnlyView || !currentProject || (saveStatus !== 'idle' && saveStatus !== 'error')) {
-        console.log("[Auto-Save Timeout] Skipped due to state.", saveStatus);
+        console.log("[Auto-Save Timeout] Skipped due to state.", "Status:", saveStatus, "Read-Only:", isReadOnlyView);
         return;
       }
 
       const projectBeingSaved = constructProjectDataToSave();
       if (!projectBeingSaved) {
         console.warn("[Auto-Save Timeout] Could not construct project data to save.");
+        setSaveStatus('error'); // Indicate an issue with preparing save data
         return;
       }
 
-      console.log("[Auto-Save Timeout] Performing save...");
-      const saveInitiated = await performSave(projectBeingSaved);
-
-      if (saveInitiated) {
-        console.log("[Auto-Save Timeout] Save initiated. Waiting for Firestore echo.");
-      } else {
-        console.log("[Auto-Save Timeout] performSave returned false. Save status is:", saveStatus);
-      }
+      console.log("[Auto-Save Timeout] Performing save for project:", projectBeingSaved.id);
+      await performSave(projectBeingSaved);
+      // performSave will set status to 'saving' or 'error'.
+      // Firestore listener will set to 'synced' on successful echo.
       saveTimeoutRef.current = null;
-    }, 2000);
+    }, 2000); // 2-second debounce
 
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
   }, [
-    saveStatus, 
+    saveStatus, // Key trigger: run when status is 'idle' or 'error'
     isReadOnlyView, mounted, isLoadingProject, currentProject,
     performSave, 
     constructProjectDataToSave,
@@ -504,6 +517,7 @@ function ProjectPageContent() {
   }, [isReadOnlyView, saveStatus]);
 
 
+  // --- Project and Node Management Callbacks ---
   const handleNameEditToggle = useCallback(async () => {
     if (isReadOnlyView) {
       toast({ title: "Read-Only Mode", description: "Project name cannot be changed.", variant: "default" });
@@ -513,20 +527,20 @@ function ProjectPageContent() {
       const newName = editingProjectName.trim();
       if (newName && newName !== currentProject.name) {
         const projectSnapshot = constructProjectDataToSave();
-        if (!projectSnapshot) return;
-        projectSnapshot.name = newName;
+        if (!projectSnapshot) return; // Should not happen if currentProject exists
+        projectSnapshot.name = newName; // Update the name in the snapshot
 
         if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-        const saveInitiated = await performSave(projectSnapshot);
+        const saveInitiated = await performSave(projectSnapshot); // This will trigger 'saving' state
         if (saveInitiated) {
             toast({title: "Project Renamed", description: `Project name update sent. Syncing...`});
-            // State (name, updatedAt, saveStatus) will be updated by Firestore listener
+            // State (name, updatedAt, saveStatus) will be updated by Firestore listener on echo
         } else {
             // performSave would have set status to 'error' and shown a toast
-            setEditingProjectName(currentProject.name); // Revert optimistic UI
+            setEditingProjectName(currentProject.name); // Revert optimistic UI name change on immediate fail
         }
       } else if (newName === "" || newName === currentProject.name) {
-        setEditingProjectName(currentProject.name); 
+        setEditingProjectName(currentProject.name); // No change or empty, revert to original
       }
     }
     setIsEditingNameState(!isEditingNameState);
@@ -567,50 +581,59 @@ function ProjectPageContent() {
       ...(newItemType === 'folder' ? { children: [] } : {}),
     };
 
+    // Update activeFileSystemRoots optimistically, then save the whole project
+    const newFileSystemRoots = addNodeToTreeRecursive(activeFileSystemRoots, parentIdForNewItem, newNode);
+    setActiveFileSystemRoots(newFileSystemRoots); // Optimistic update
+
     let projectSnapshot = constructProjectDataToSave();
     if (!projectSnapshot) return;
-    projectSnapshot.fileSystemRoots = addNodeToTreeRecursive(projectSnapshot.fileSystemRoots, parentIdForNewItem, newNode);
+    projectSnapshot.fileSystemRoots = newFileSystemRoots; // Ensure the snapshot uses the new tree
 
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     const saveInitiated = await performSave(projectSnapshot);
     if (saveInitiated) {
-        setSelectedFileNodeId(newNode.id); 
+        setSelectedFileNodeId(newNode.id); // Select the new node
         toast({ title: `${newItemType === 'file' ? 'File' : 'Folder'} Created`, description: `"${newNode.name}" creation sent. Syncing...`});
-        // State update via Firestore listener
+        // State update (including fileSystemRoots in currentProject) via Firestore listener
+    } else {
+        // Revert optimistic update if save fails immediately
+        setActiveFileSystemRoots(currentProject.fileSystemRoots || []);
     }
     setIsNewItemDialogOpen(false);
     setNewItemType(null);
-  }, [isReadOnlyView, currentProject, newItemName, newItemType, parentIdForNewItem, constructProjectDataToSave, performSave, toast]);
+  }, [isReadOnlyView, currentProject, newItemName, newItemType, parentIdForNewItem, constructProjectDataToSave, performSave, toast, activeFileSystemRoots]);
 
 
   const handleNodeSelectedInExplorer = useCallback(async (selectedNode: FileSystemNode | null) => {
     if (saveStatus === 'saving') {
         toast({ title: "Saving...", description: "Please wait for current changes to save.", duration: 1500});
-        return;
+        return; // Prevent switching if a save is in progress
     }
 
     const previousSelectedNodeId = selectedFileNodeId;
     const newSelectedNodeId = selectedNode ? selectedNode.id : null;
 
-    if (previousSelectedNodeId === newSelectedNodeId) return;
+    if (previousSelectedNodeId === newSelectedNodeId) return; // No change in selection
 
+    // Save current work before switching
     if (!isReadOnlyView && currentProject) {
-        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current); // Clear any pending auto-save
 
-        const projectDataToSave = constructProjectDataToSave();
+        const projectDataToSave = constructProjectDataToSave(); // This gets current editor content
         if (projectDataToSave) {
             const saveInitiated = await performSave(projectDataToSave);
             if (saveInitiated) {
                  console.log("[NodeSelect] Save initiated before switching node. Waiting for Firestore echo.");
-            } else if (!isReadOnlyView) {
+            } else if (!isReadOnlyView) { // Save failed
                 console.warn("[NodeSelect] Save failed before switching node.");
                 // performSave would have set status to 'error' and shown a toast.
-                // Consider if we should prevent node switch here or allow it with a warning.
-                // For now, we allow it, relying on user to retry or Firestore to eventually sync.
+                // We allow the node switch but data might be unsaved.
             }
         }
     }
+    // Proceed with node switch
     setSelectedFileNodeId(newSelectedNodeId);
+    // The useEffect for [selectedFileNodeId, activeFileSystemRoots, ...] will load the content.
 
   }, [isReadOnlyView, currentProject, selectedFileNodeId, constructProjectDataToSave, performSave, toast, saveStatus]);
 
@@ -627,20 +650,26 @@ function ProjectPageContent() {
     if (isReadOnlyView || !nodeToDeleteId || !currentProject || saveStatus === 'saving') return;
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
-    const nodeBeingDeleted = findNodeByIdRecursive(currentProject.fileSystemRoots, nodeToDeleteId);
+    const nodeBeingDeleted = findNodeByIdRecursive(activeFileSystemRoots, nodeToDeleteId);
+    const newFileSystemRoots = deleteNodeFromTreeRecursive(activeFileSystemRoots, nodeToDeleteId);
+    setActiveFileSystemRoots(newFileSystemRoots); // Optimistic update
+
     let projectSnapshot = constructProjectDataToSave();
     if (!projectSnapshot) return;
-    projectSnapshot.fileSystemRoots = deleteNodeFromTreeRecursive(projectSnapshot.fileSystemRoots, nodeToDeleteId);
+    projectSnapshot.fileSystemRoots = newFileSystemRoots; // Ensure snapshot uses updated tree
 
     const saveInitiated = await performSave(projectSnapshot);
     if (saveInitiated) {
         if (selectedFileNodeId === nodeToDeleteId) {
-            setSelectedFileNodeId(null);
+            setSelectedFileNodeId(null); // Deselect if the deleted node was active
         }
         toast({ title: "Item Deletion Sent", description: `"${nodeBeingDeleted?.name || 'Item'}" deletion sent. Syncing...` });
+    } else {
+        // Revert optimistic update if save fails
+        setActiveFileSystemRoots(currentProject.fileSystemRoots || []);
     }
     setNodeToDeleteId(null);
-  }, [nodeToDeleteId, selectedFileNodeId, currentProject, constructProjectDataToSave, performSave, toast, isReadOnlyView, saveStatus]);
+  }, [nodeToDeleteId, selectedFileNodeId, currentProject, constructProjectDataToSave, performSave, toast, isReadOnlyView, saveStatus, activeFileSystemRoots]);
 
 
   const onAddFileToFolderCallback = useCallback((folderId: string | null) => {
@@ -658,15 +687,14 @@ function ProjectPageContent() {
     }
     if (draggedNodeId === targetFolderId) return;
 
-    let projectSnapshot = constructProjectDataToSave();
-    if (!projectSnapshot) return;
-    const { removedNode, newTree: treeWithoutDraggedNode } = removeNodeFromTree(projectSnapshot.fileSystemRoots, draggedNodeId);
+    const { removedNode, newTree: treeWithoutDraggedNode } = removeNodeFromTree(activeFileSystemRoots, draggedNodeId);
 
     if (!removedNode) {
       toast({ title: "Move Error", description: "Could not find item to move.", variant: "destructive" });
       return;
     }
 
+    // Prevent moving a folder into itself or its children
     if (targetFolderId && removedNode.type === 'folder') {
       const findPathToRoot = (nodes: FileSystemNode[], id: string, path: string[] = []): string[] | null => {
           for (const n of nodes) {
@@ -678,41 +706,58 @@ function ProjectPageContent() {
           }
           return null;
       }
-      const pathToTarget = findPathToRoot(projectSnapshot.fileSystemRoots, targetFolderId);
+      // Check on the original activeFileSystemRoots, not the one potentially modified by constructProjectDataToSave
+      const pathToTarget = findPathToRoot(activeFileSystemRoots, targetFolderId);
       if (pathToTarget?.includes(draggedNodeId)) {
-           toast({ title: "Invalid Move", description: "Cannot move a folder into one of its own subfolders.", variant: "destructive" });
+           toast({ title: "Invalid Move", description: "Cannot move a folder into one ofits own subfolders.", variant: "destructive" });
           return;
       }
     }
+    
+    const newFileSystemRoots = addNodeToTargetInTree(treeWithoutDraggedNode, targetFolderId, removedNode);
+    setActiveFileSystemRoots(newFileSystemRoots); // Optimistic update
 
-    projectSnapshot.fileSystemRoots = addNodeToTargetInTree(treeWithoutDraggedNode, targetFolderId, removedNode);
+    let projectSnapshot = constructProjectDataToSave();
+    if (!projectSnapshot) return;
+    projectSnapshot.fileSystemRoots = newFileSystemRoots; // Ensure snapshot uses the moved tree
 
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     const saveInitiated = await performSave(projectSnapshot);
     if (saveInitiated) {
         toast({ title: "Item Move Sent", description: `"${removedNode.name}" move sent. Syncing...` });
+    } else {
+        // Revert optimistic update
+        setActiveFileSystemRoots(currentProject.fileSystemRoots || []);
     }
-  }, [isReadOnlyView, currentProject, constructProjectDataToSave, performSave, toast]);
+  }, [isReadOnlyView, currentProject, constructProjectDataToSave, performSave, toast, activeFileSystemRoots]);
 
 
+  // Effect to determine read-only status based on ownership and shared query param
   useEffect(() => {
     if (!currentProject || !authUser || !mounted || isLoadingProject) return;
-    const currentIsShared = searchParams.get('shared') === 'true';
-    let effectiveReadOnly = currentIsShared;
-    if (!currentIsShared && currentProject.ownerId && authUser.uid !== currentProject.ownerId) {
+    const currentIsSharedParam = searchParams.get('shared') === 'true';
+    let effectiveReadOnly = currentIsSharedParam;
+    
+    // If not explicitly shared via param, check ownership
+    if (!currentIsSharedParam && currentProject.ownerId && authUser.uid !== currentProject.ownerId) {
       effectiveReadOnly = true;
     }
-    if (effectiveReadOnly !== isReadOnlyView) setIsReadOnlyView(effectiveReadOnly);
 
-    if (effectiveReadOnly && mounted && !isLoadingProject) {
+    if (effectiveReadOnly !== isReadOnlyView) {
+      setIsReadOnlyView(effectiveReadOnly);
+    }
+
+    if (effectiveReadOnly && mounted && !isLoadingProject) { // Ensure not shown during load
       toast({
-        title: currentIsShared ? "Read-Only Mode" : "Viewing Others' Project",
-        description: currentIsShared ? "You are viewing a shared project. Changes cannot be saved." : "This project is owned by another user. You are in read-only mode.",
+        title: currentIsSharedParam ? "Read-Only Mode" : "Viewing Others' Project",
+        description: currentIsSharedParam ? "You are viewing a shared project. Changes cannot be saved." : "This project is owned by another user. You are in read-only mode.",
+        duration: 5000
       });
     }
   }, [searchParams, toast, mounted, isReadOnlyView, currentProject, authUser, isLoadingProject]);
 
 
+  // --- Render Logic ---
   if (!mounted || isLoadingProject) {
     return (
       <div className="flex h-screen flex-col fixed inset-0 pt-14">
@@ -733,7 +778,7 @@ function ProjectPageContent() {
     );
   }
 
-  if (!currentProject) {
+  if (!currentProject) { // This state is after isLoadingProject is false
      return (
       <div className="flex h-screen flex-col items-center justify-center">
          <Info className="h-12 w-12 text-destructive mb-4" />
@@ -749,30 +794,32 @@ function ProjectPageContent() {
 
   const editorKey = `editor-${selectedFileNodeId || 'project-root'}-${currentProject.updatedAt}`;
   const whiteboardKey = `whiteboard-${selectedFileNodeId || 'project-root'}-${currentProject.updatedAt}`;
-  const showContentPlaceholder = !selectedFileNodeId && activeFileSystemRoots.length > 0;
-  const showCreateFilePrompt = !selectedFileNodeId && activeFileSystemRoots.length === 0;
+  
+  const hasFileSystemRoots = activeFileSystemRoots && activeFileSystemRoots.length > 0;
+  const showContentPlaceholder = !selectedFileNodeId && hasFileSystemRoots;
+  const showCreateFilePrompt = !selectedFileNodeId && !hasFileSystemRoots;
 
   const saveStatusIcon = () => {
     switch (saveStatus) {
       case 'saving': return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />;
       case 'synced': return <CheckCircle2 className="h-4 w-4 text-green-500" />;
       case 'error': return <AlertCircle className="h-4 w-4 text-red-500" />;
-      case 'idle': return <Edit className="h-4 w-4 text-yellow-500" />;
-      default: return <div className="h-4 w-4" />;
+      case 'idle': return <Edit className="h-4 w-4 text-yellow-500" />; // Changed from Disc3
+      default: return <div className="h-4 w-4" />; // Placeholder for unknown status
     }
   };
   const saveStatusTooltip = () => {
     switch (saveStatus) {
       case 'saving': return "Saving changes...";
       case 'synced': return lastSyncTime ? `Changes synced at ${lastSyncTime}` : "All changes saved.";
-      case 'error': return "Error saving. Check console.";
+      case 'error': return "Error saving. Check console or retry.";
       case 'idle': return "Unsaved changes.";
       default: return "Checking status...";
     }
   };
 
   return (
-    <div className="flex h-screen flex-col fixed inset-0 pt-14">
+    <div className="flex h-screen flex-col fixed inset-0 pt-14"> {/* Main container for editor page */}
        <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-14">
         <div className="container flex h-full items-center px-4 sm:px-6 lg:px-8">
           <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2" aria-label="Back to dashboard">
@@ -799,7 +846,7 @@ function ProjectPageContent() {
               </h1>
             )}
             {!isReadOnlyView && (
-                <Button variant="ghost" size="icon" onClick={handleNameEditToggle} className="ml-1 mr-2" aria-label="Edit project name">
+                <Button variant="ghost" size="icon" onClick={handleNameEditToggle} className="ml-1 mr-2" aria-label={isEditingNameState ? "Confirm name change" : "Edit project name"}>
                 {isEditingNameState ? <Check className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
                 </Button>
             )}
@@ -819,6 +866,10 @@ function ProjectPageContent() {
                 let parentIdToUse: string | null = null;
                 if (currentActiveNode) {
                     parentIdToUse = currentActiveNode.type === 'folder' ? currentActiveNode.id : findParentId(activeFileSystemRoots, currentActiveNode.id);
+                } else if (!selectedFileNodeId && activeFileSystemRoots.length === 0) { // No selection, project is empty
+                    parentIdToUse = null;
+                } else if (!selectedFileNodeId && activeFileSystemRoots.length > 0) { // No selection, project has items (implies root)
+                    parentIdToUse = null;
                 }
                 handleOpenNewItemDialogRef.current('file', parentIdToUse);
               }}>
@@ -830,6 +881,10 @@ function ProjectPageContent() {
                  let parentIdToUse: string | null = null;
                  if (currentActiveNode) {
                      parentIdToUse = currentActiveNode.type === 'folder' ? currentActiveNode.id : findParentId(activeFileSystemRoots, currentActiveNode.id);
+                 } else if (!selectedFileNodeId && activeFileSystemRoots.length === 0) {
+                    parentIdToUse = null;
+                 } else if (!selectedFileNodeId && activeFileSystemRoots.length > 0) {
+                    parentIdToUse = null;
                  }
                  handleOpenNewItemDialogRef.current('folder', parentIdToUse);
               }}>
@@ -844,7 +899,7 @@ function ProjectPageContent() {
             <TooltipProvider delayDuration={100}>
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <div className="p-2 rounded-md hover:bg-accent flex items-center justify-center">
+                        <div className="p-2 rounded-md hover:bg-accent flex items-center justify-center cursor-default">
                            {saveStatusIcon()}
                         </div>
                     </TooltipTrigger>
@@ -859,7 +914,7 @@ function ProjectPageContent() {
               size="sm"
               onClick={() => setIsExplorerVisible(!isExplorerVisible)}
               className="px-2"
-              aria-label="Toggle file explorer"
+              aria-label={isExplorerVisible ? "Hide file explorer" : "Show file explorer"}
             >
               {isExplorerVisible ? <PanelLeftOpen className="h-4 w-4 sm:mr-2" /> : <FolderTree className="h-4 w-4 sm:mr-2" />}
               <span className="hidden sm:inline">Explorer</span>
@@ -914,7 +969,7 @@ function ProjectPageContent() {
               <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
                 <div className="h-full p-1 sm:p-2 md:p-3">
                   <FileExplorer
-                    nodes={activeFileSystemRoots}
+                    nodes={activeFileSystemRoots} // This should now be derived from currentProject
                     onNodeSelect={handleNodeSelectedInExplorer}
                     onDeleteNode={handleDeleteNodeRequest}
                     onAddFileToFolder={onAddFileToFolderCallback}
@@ -954,42 +1009,25 @@ function ProjectPageContent() {
                  </div>
             )}
 
-            {(!selectedFileNodeId && !showCreateFilePrompt && !showContentPlaceholder) && ( // Root content shown
+            {/* Root content or selected file content */}
+            {(!selectedFileNodeId && !showCreateFilePrompt && !showContentPlaceholder) || selectedFileNodeId ? (
                 viewMode === "editor" ? (
                   <div className="h-full p-1 sm:p-2 md:p-3">
-                    <RichTextEditor key={`${editorKey}-root`} value={activeTextContent} onChange={handleTextChange} isReadOnly={isReadOnlyView} />
+                    <RichTextEditor key={editorKey} value={activeTextContent} onChange={handleTextChange} isReadOnly={isReadOnlyView} />
                   </div>
                 ) : viewMode === "whiteboard" ? (
                   <div className="h-full p-1 sm:p-2 md:p-3">
-                    <Whiteboard key={`${whiteboardKey}-root`} initialData={activeWhiteboardDataRef.current} onChange={handleWhiteboardChange} isReadOnly={isReadOnlyView} />
+                    <Whiteboard key={whiteboardKey} initialData={activeWhiteboardDataRef.current} onChange={handleWhiteboardChange} isReadOnly={isReadOnlyView} />
                   </div>
                 ) : viewMode === "both" ? (
                   <ResizablePanelGroup direction="horizontal" className="h-full w-full">
-                    <ResizablePanel defaultSize={50} minSize={20}><div className="h-full p-1 sm:p-2 md:p-3"><RichTextEditor key={`${editorKey}-root-both`} value={activeTextContent} onChange={handleTextChange} isReadOnly={isReadOnlyView}/></div></ResizablePanel>
+                    <ResizablePanel defaultSize={50} minSize={20}><div className="h-full p-1 sm:p-2 md:p-3"><RichTextEditor key={`${editorKey}-both`} value={activeTextContent} onChange={handleTextChange} isReadOnly={isReadOnlyView}/></div></ResizablePanel>
                     <ResizableHandle withHandle />
-                    <ResizablePanel defaultSize={50} minSize={20}><div className="h-full p-1 sm:p-2 md:p-3"><Whiteboard key={`${whiteboardKey}-root-both`} initialData={activeWhiteboardDataRef.current} onChange={handleWhiteboardChange} isReadOnly={isReadOnlyView}/></div></ResizablePanel>
+                    <ResizablePanel defaultSize={50} minSize={20}><div className="h-full p-1 sm:p-2 md:p-3"><Whiteboard key={`${whiteboardKey}-both`} initialData={activeWhiteboardDataRef.current} onChange={handleWhiteboardChange} isReadOnly={isReadOnlyView}/></div></ResizablePanel>
                   </ResizablePanelGroup>
                 ) : null
-            )}
-
-
-            {selectedFileNodeId && viewMode === "editor" && (
-              <div className="h-full p-1 sm:p-2 md:p-3">
-                <RichTextEditor key={editorKey} value={activeTextContent} onChange={handleTextChange} isReadOnly={isReadOnlyView} />
-              </div>
-            )}
-            {selectedFileNodeId && viewMode === "whiteboard" && (
-              <div className="h-full p-1 sm:p-2 md:p-3">
-                <Whiteboard key={whiteboardKey} initialData={activeWhiteboardDataRef.current} onChange={handleWhiteboardChange} isReadOnly={isReadOnlyView} />
-              </div>
-            )}
-            {selectedFileNodeId && viewMode === "both" && (
-              <ResizablePanelGroup direction="horizontal" className="h-full w-full">
-                <ResizablePanel defaultSize={50} minSize={20}><div className="h-full p-1 sm:p-2 md:p-3"><RichTextEditor key={`${editorKey}-both`} value={activeTextContent} onChange={handleTextChange} isReadOnly={isReadOnlyView} /></div></ResizablePanel>
-                <ResizableHandle withHandle />
-                <ResizablePanel defaultSize={50} minSize={20}><div className="h-full p-1 sm:p-2 md:p-3"><Whiteboard key={`${whiteboardKey}-both`} initialData={activeWhiteboardDataRef.current} onChange={handleWhiteboardChange} isReadOnly={isReadOnlyView} /></div></ResizablePanel>
-              </ResizablePanelGroup>
-            )}
+            ) : null}
+            
           </ResizablePanel>
         </ResizablePanelGroup>
       </main>
@@ -999,7 +1037,7 @@ function ProjectPageContent() {
           project={currentProject}
           isOpen={isShareDialogOpen}
           onOpenChange={setIsShareDialogOpen}
-          isLocal={false} 
+          isLocal={false} // Indicate Firestore backend
         />
       )}
 
@@ -1059,10 +1097,22 @@ function ProjectPageContent() {
 
 export default function ProjectPage() {
   return (
-    <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2">Loading Project...</p></div>}>
+    // Suspense is good for initial route load, but loading inside ProjectPageContent handles data fetching.
+    <Suspense fallback={
+      <div className="flex h-screen flex-col fixed inset-0 pt-14">
+         <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-14">
+            <div className="container flex h-full items-center px-4 sm:px-6 lg:px-8">
+                <h1 className="text-lg font-semibold">Loading Project Structure...</h1>
+                <Loader2 className="ml-2 h-5 w-5 animate-spin" />
+            </div>
+        </header>
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="ml-2">Preparing project workspace...</p>
+        </div>
+      </div>
+    }>
       <ProjectPageContent />
     </Suspense>
   )
 }
-
-    
