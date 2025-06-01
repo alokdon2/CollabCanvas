@@ -40,9 +40,10 @@ export const processDataObjectWhiteboardContent = (dataObject: Project | FileSys
       ? { ...whiteboardData.appState }
       : ({ ZenModeEnabled: false, viewModeEnabled: false } as ExcalidrawAppState);
 
-    if (direction === 'load') {
-      if (newAppState && newAppState.hasOwnProperty('collaborators')) {
-        const collaboratorsData = newAppState.collaborators;
+    // Handle 'collaborators' Map/Object conversion
+    if (newAppState && newAppState.hasOwnProperty('collaborators')) {
+      const collaboratorsData = newAppState.collaborators;
+      if (direction === 'load') {
         if (collaboratorsData && typeof collaboratorsData === 'object' && !(collaboratorsData instanceof Map)) {
           const collaboratorsMap = new Map();
           for (const key in collaboratorsData as any) {
@@ -54,65 +55,36 @@ export const processDataObjectWhiteboardContent = (dataObject: Project | FileSys
         } else if (collaboratorsData === null || collaboratorsData === undefined) {
           newAppState.collaborators = new Map();
         }
-      }
-    } else { // direction === 'save'
-      if (newAppState && newAppState.collaborators instanceof Map) {
-        const collaboratorsObject: { [key: string]: any } = {};
-        newAppState.collaborators.forEach((value, key) => {
-          collaboratorsObject[String(key)] = sanitizeDataForFirestore(value); // Sanitize collaborator value
-        });
-        newAppState.collaborators = collaboratorsObject;
+      } else { // direction === 'save'
+        if (newAppState.collaborators instanceof Map) {
+          const collaboratorsObject: { [key: string]: any } = {};
+          newAppState.collaborators.forEach((value, key) => {
+            // Sanitize collaborator value before storing in object
+            collaboratorsObject[String(key)] = sanitizeDataForFirestore(value); 
+          });
+          newAppState.collaborators = collaboratorsObject;
+        }
       }
     }
+    
+    // Points transformation is removed. We assume Excalidraw elements store points
+    // in a Firestore-compatible format (arrays of numbers or arrays of arrays of numbers).
+    // `sanitizeDataForFirestore` will handle general object/array cleaning if needed.
 
-    const elementsToProcess = Array.isArray(whiteboardData.elements) ? whiteboardData.elements : [];
-    try {
-      const transformedElements = elementsToProcess.map(el => {
-        if (!el || !el.points || !Array.isArray(el.points) || el.points.length === 0) {
-          return el; // Skip if no points or element is malformed
-        }
-        const newElement = { ...el } as any; 
-        const firstPoint = el.points[0];
-        
-        if (direction === 'save') {
-          if (Array.isArray(firstPoint) && firstPoint.length === 2 && typeof firstPoint[0] === 'number' && typeof firstPoint[1] === 'number') {
-            // Convert [number, number] to {x, y}
-            newElement.points = (el.points as ReadonlyArray<readonly [number, number]>).map(p => ({ x: p[0], y: p[1] }));
-          }
-          // If already {x,y} or other format, leave as is for sanitizeDataForFirestore to handle
-        } else { // direction === 'load'
-          if (typeof firstPoint === 'object' && firstPoint !== null && 'x' in firstPoint && 'y' in firstPoint) {
-            // Convert {x, y} to [number, number]
-            newElement.points = (el.points as Array<{x: number, y: number}>).map(p => [p.x, p.y]);
-          }
-          // If already [number,number] or other format, leave as is
-        }
-        return newElement as ExcalidrawElement;
-      });
-
-      return {
-        ...whiteboardData,
-        elements: transformedElements,
-        appState: newAppState,
-        files: whiteboardData.files || {},
-      };
-    } catch (error) {
-      console.error("Error transforming whiteboard data points:", error, "Data:", JSON.stringify(whiteboardData), "Direction:", direction);
-      return { // Fallback to a safe structure
-        elements: elementsToProcess,
-        appState: newAppState,
-        files: whiteboardData.files || {},
-      };
-    }
+    return {
+      ...whiteboardData,
+      elements: Array.isArray(whiteboardData.elements) ? whiteboardData.elements : [],
+      appState: newAppState,
+      files: typeof whiteboardData.files === 'object' && whiteboardData.files !== null ? whiteboardData.files : {},
+    };
   };
   
-  // Handle if the input is just { whiteboardContent: ... }
-  if ('whiteboardContent' in dataObject && !('id' in dataObject || 'fileSystemRoots' in dataObject)) {
+  // Handle if the input is just { whiteboardContent: ... } used for single node processing
+  if ('whiteboardContent' in dataObject && !('id' in dataObject || 'fileSystemRoots' in dataObject || 'type' in dataObject)) {
     return {
         whiteboardContent: transformSingleWhiteboard(dataObject.whiteboardContent)
     };
   }
-
 
   if ('fileSystemRoots' in dataObject) { // It's a Project
     const project = dataObject as Project;
@@ -208,8 +180,8 @@ export async function loadProjectData(projectId: string): Promise<Project | null
     const docSnap = await getDoc(projectDocRef);
     if (docSnap.exists()) {
       console.log(`[FirestoreService] Project ${projectId} loaded.`);
+      // Client will call processDataObjectWhiteboardContent(..., 'load')
       let projectData = convertTimestamps(docSnap.data()) as Project;
-      // processDataObjectWhiteboardContent is now handled by ProjectPage after load
       return projectData;
     } else {
       console.log(`[FirestoreService] Project ${projectId} not found.`);
@@ -228,18 +200,19 @@ export async function loadProjectData(projectId: string): Promise<Project | null
 export async function saveProjectData(project: Project): Promise<void> {
   console.log(`[FirestoreService] Saving project: ${project.id}`);
   try {
-    let projectToProcess = JSON.parse(JSON.stringify(project)); // Deep clone
+    let projectToProcess = JSON.parse(JSON.stringify(project)); 
+    // Process for Firestore (e.g. whiteboard collaborators Map to Object)
     projectToProcess = processDataObjectWhiteboardContent(projectToProcess, 'save') as Project;
     const finalProjectToSaveRaw = sanitizeDataForFirestore(projectToProcess);
 
     const finalProjectToSave = {
         ...finalProjectToSaveRaw,
-        // updatedAt is now set by the caller (ProjectPage) before calling saveProjectData
+        // updatedAt is set by the caller (ProjectPage) before calling saveProjectData
     };
 
     const projectDocRef = doc(db, PROJECTS_COLLECTION, project.id);
     await setDoc(projectDocRef, finalProjectToSave, { merge: true });
-    console.log(`[FirestoreService] Project ${project.id} saved (or save initiated).`);
+    console.log(`[FirestoreService] Project ${project.id} save initiated to Firestore.`);
   } catch (error) {
     console.error(`[FirestoreService] Error saving project ${project.id}:`, error);
     throw error;
@@ -262,12 +235,11 @@ export async function subscribeToProjectUpdates(
   const unsubscribe = onSnapshot(projectDocRef, (docSnap) => {
     if (docSnap.exists()) {
       console.log(`[FirestoreService] Real-time update received for project ${projectId}`);
+      // Client (ProjectPage) will call processDataObjectWhiteboardContent(..., 'load')
       let updatedProject = convertTimestamps(docSnap.data()) as Project;
-      // processDataObjectWhiteboardContent will be handled by ProjectPage upon receiving this
       onUpdateCallback(updatedProject);
     } else {
       console.log(`[FirestoreService] Real-time update: Project ${projectId} deleted or does not exist.`);
-      // Potentially call onUpdateCallback with null or an indicator of deletion if needed by UI
     }
   }, (error) => {
     console.error(`[FirestoreService] Error in real-time subscription for project ${projectId}:`, error);
@@ -310,18 +282,13 @@ export async function getAllProjectsFromFirestore(userId?: string): Promise<Proj
     const querySnapshot = await getDocs(q);
     let projects = querySnapshot.docs.map(docSnap => {
         let project = convertTimestamps(docSnap.data()) as Project;
-        project = processDataObjectWhiteboardContent(project, 'load') as Project; 
+        // Client (DashboardPage) will call processDataObjectWhiteboardContent(..., 'load') if needed
         return project;
     });
     
     console.log(`[FirestoreService] Fetched ${projects.length} projects for user ${userId}.`);
-    return projects.map(p => ({
-      ...p,
-      name: p.name || "Untitled Project",
-      textContent: p.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
-      whiteboardContent: p.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
-      fileSystemRoots: ensureNodeContentDefaults(p.fileSystemRoots || [])
-    }));
+    // Defaulting is now primarily handled by the client (DashboardPage) after load
+    return projects;
   } catch (error) {
     console.error(`[FirestoreService] Error fetching projects for user ${userId}:`, error);
     throw error;
@@ -334,7 +301,8 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
     const newProjectId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    let projectToCreate: Project = {
+    // Ensure defaults before processing for 'save'
+    const projectWithClientDefaults: Project = {
       ...newProjectData,
       id: newProjectId,
       createdAt: now,
@@ -342,14 +310,16 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
       name: newProjectData.name || "Untitled Project",
       fileSystemRoots: ensureNodeContentDefaults(newProjectData.fileSystemRoots || []),
       textContent: newProjectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
-      whiteboardContent: newProjectData.whiteboardContent 
-        ? processDataObjectWhiteboardContent({ whiteboardContent: newProjectData.whiteboardContent }, 'save').whiteboardContent
-        : { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
+      whiteboardContent: newProjectData.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
     };
+    
+    // Process for 'save' (e.g. collaborators Map to Object)
+    let projectToSaveProcessed = processDataObjectWhiteboardContent(projectWithClientDefaults, 'save') as Project;
+    const finalProjectToSaveSanitized = sanitizeDataForFirestore(projectToSaveProcessed);
 
-    const finalProjectToSaveRaw = sanitizeDataForFirestore(projectToCreate);
+    // Ensure timestamps are set correctly after all processing
     const finalProjectToSave = { 
-      ...finalProjectToSaveRaw,
+      ...finalProjectToSaveSanitized,
       createdAt: now, 
       updatedAt: now,
     };
@@ -358,12 +328,10 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
     await setDoc(projectDocRef, finalProjectToSave);
     console.log(`[FirestoreService] Project "${finalProjectToSave.name}" (ID: ${newProjectId}) created.`);
 
+    // Return the client-ready version (after 'load' processing)
     let returnProject = JSON.parse(JSON.stringify(finalProjectToSave)) as Project;
-    returnProject = processDataObjectWhiteboardContent(returnProject, 'load') as Project;
-    return {
-        ...returnProject,
-        fileSystemRoots: ensureNodeContentDefaults(returnProject.fileSystemRoots || []) 
-    };
+    returnProject = processDataObjectWhiteboardContent(returnProject, 'load') as Project; // Process for client
+    return returnProject;
   } catch (error) {
     console.error('[FirestoreService] Error creating project:', error);
     throw error;
@@ -381,6 +349,3 @@ export async function deleteProjectFromFirestore(projectId: string): Promise<voi
     throw error;
   }
 }
-
-
-    
