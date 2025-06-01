@@ -16,7 +16,7 @@ import {
   orderBy,
   Timestamp,
   DocumentReference,
-  where // Added where
+  where
 } from 'firebase/firestore';
 
 const PROJECTS_COLLECTION = 'projects';
