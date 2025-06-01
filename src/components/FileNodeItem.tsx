@@ -12,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MoreHorizontal } from "lucide-react";
-import { useState } from "react";
+import React, { useState } from "react"; // Import React
 
 
 interface FileNodeItemProps {
@@ -20,7 +20,7 @@ interface FileNodeItemProps {
   level: number;
   onToggleExpand: (nodeId: string) => void;
   onNodeClick: (node: FileSystemNode) => void;
-  expandedFoldersInExplorer: Set<string>; 
+  expandedFoldersInExplorer: Set<string>;
   selectedNodeIdInExplorer: string | null;
   onDeleteNode: (nodeId: string) => void;
   onAddFileToFolder: (folderId: string | null) => void;
@@ -29,7 +29,7 @@ interface FileNodeItemProps {
   isReadOnly?: boolean;
 }
 
-export function FileNodeItem({
+const FileNodeItemComponent = ({
   node,
   level,
   onToggleExpand,
@@ -41,7 +41,7 @@ export function FileNodeItem({
   onAddFolderToFolder,
   onMoveNode,
   isReadOnly = false,
-}: FileNodeItemProps) {
+}: FileNodeItemProps) => {
   const isFolder = node.type === "folder";
   const currentIsExpanded = isFolder && expandedFoldersInExplorer.has(node.id);
   const currentIsSelected = selectedNodeIdInExplorer === node.id;
@@ -50,9 +50,9 @@ export function FileNodeItem({
   const handleNodeClick = () => {
     onNodeClick(node);
   };
-  
+
   const handleChevronClick = (e: React.MouseEvent) => {
-    e.stopPropagation(); 
+    e.stopPropagation();
     if (isFolder) {
       onToggleExpand(node.id);
     }
@@ -91,10 +91,10 @@ export function FileNodeItem({
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     if (isReadOnly) return;
-    event.preventDefault(); 
-    event.stopPropagation(); 
+    event.preventDefault();
+    event.stopPropagation();
     event.dataTransfer.dropEffect = "move";
-    if (isFolder) { 
+    if (isFolder) {
       setIsDragOver(true);
     }
   };
@@ -120,34 +120,34 @@ export function FileNodeItem({
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
     if (isReadOnly) return;
     event.preventDefault();
-    event.stopPropagation(); 
+    event.stopPropagation();
     setIsDragOver(false);
     const draggedNodeId = event.dataTransfer.getData("application/node-id");
 
     if (draggedNodeId && draggedNodeId !== node.id) {
       if (isFolder) {
-        onMoveNode(draggedNodeId, node.id); 
+        onMoveNode(draggedNodeId, node.id);
       }
     }
   };
 
 
   return (
-    <div className="flex flex-col" data-filenodeitem="true"> 
+    <div className="flex flex-col" data-filenodeitem="true">
       <div
         draggable={!isReadOnly}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
-        onDrop={isFolder && !isReadOnly ? handleDrop : undefined} 
+        onDrop={isFolder && !isReadOnly ? handleDrop : undefined}
         className={cn(
           "flex items-center py-1.5 px-2 rounded-md group hover:bg-accent",
           isReadOnly ? "cursor-default" : "cursor-pointer",
           currentIsSelected && "bg-accent text-accent-foreground",
-          isDragOver && isFolder && !isReadOnly && "bg-primary/20 ring-2 ring-primary" 
+          isDragOver && isFolder && !isReadOnly && "bg-primary/20 ring-2 ring-primary"
         )}
-        style={{ paddingLeft: `${level * 1.25 + 0.5}rem` }} 
+        style={{ paddingLeft: `${level * 1.25 + 0.5}rem` }}
         onClick={handleNodeClick}
         role="button"
         tabIndex={0}
@@ -170,14 +170,14 @@ export function FileNodeItem({
           </Button>
         )}
         {!isFolder && <div className="w-6 mr-1 flex-shrink-0" /> }
-        
+
         {isFolder ? (
           <Folder className="h-4 w-4 mr-2 text-muted-foreground group-hover:text-accent-foreground flex-shrink-0" />
         ) : (
           <FileText className="h-4 w-4 mr-2 text-muted-foreground group-hover:text-accent-foreground flex-shrink-0" />
         )}
         <span className="text-sm truncate flex-grow">{node.name}</span>
-        
+
         {!isReadOnly && (
             <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -185,15 +185,15 @@ export function FileNodeItem({
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6 ml-auto p-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100"
-                onClick={(e) => e.stopPropagation()} 
+                onClick={(e) => e.stopPropagation()}
                 >
                 <MoreHorizontal className="h-4 w-4" />
                 <span className="sr-only">More options</span>
                 </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent 
-                onClick={(e) => e.stopPropagation()} 
-                side="right" 
+            <DropdownMenuContent
+                onClick={(e) => e.stopPropagation()}
+                side="right"
                 align="start"
             >
                 {isFolder && (
@@ -218,7 +218,7 @@ export function FileNodeItem({
 
       </div>
       {isFolder && currentIsExpanded && node.children && node.children.length > 0 && (
-        <div className="pl-0"> 
+        <div className="pl-0">
           {node.children.map((child) => (
             <FileNodeItem
               key={child.id}
@@ -238,9 +238,9 @@ export function FileNodeItem({
         </div>
       )}
       {isFolder && currentIsExpanded && (!node.children || node.children.length === 0) && (
-         <div 
+         <div
             className="text-xs text-muted-foreground italic"
-            style={{ paddingLeft: `${(level + 1) * 1.25 + 0.5 + 1.5}rem` }} 
+            style={{ paddingLeft: `${(level + 1) * 1.25 + 0.5 + 1.5}rem` }}
           >
             empty
         </div>
@@ -249,4 +249,4 @@ export function FileNodeItem({
   );
 }
 
-    
+export const FileNodeItem = React.memo(FileNodeItemComponent);

@@ -1,4 +1,6 @@
 
+"use client"; // Added "use client" for useMemo
+
 import Link from "next/link";
 import { format } from "date-fns";
 import { Edit3, FileText, Trash2, Share2, LayoutDashboard, Folder } from "lucide-react";
@@ -23,6 +25,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import type { Project, FileSystemNode } from "@/lib/types";
+import React, { useMemo } from "react"; // Import React and useMemo
 
 interface ProjectCardProps {
   project: Project;
@@ -40,10 +43,17 @@ function countFileSystemItems(nodes: FileSystemNode[]): number {
   return count;
 }
 
-export function ProjectCard({ project, onDeleteProject, onShareProject }: ProjectCardProps) {
-  const textSnippet = project.textContent?.replace(/<[^>]+>/g, ' ').trim(); // Strip HTML for snippet
-  const whiteboardItemCount = project.whiteboardContent?.elements?.length || 0;
-  const fileSystemItemCount = project.fileSystemRoots ? countFileSystemItems(project.fileSystemRoots) : 0;
+const ProjectCardComponent = ({ project, onDeleteProject, onShareProject }: ProjectCardProps) => {
+  const { textSnippet, whiteboardItemCount, fileSystemItemCount } = useMemo(() => {
+    const snippet = project.textContent?.replace(/<[^>]+>/g, ' ').trim();
+    const boardItems = project.whiteboardContent?.elements?.length || 0;
+    const fsItems = project.fileSystemRoots ? countFileSystemItems(project.fileSystemRoots) : 0;
+    return {
+      textSnippet: snippet,
+      whiteboardItemCount: boardItems,
+      fileSystemItemCount: fsItems,
+    };
+  }, [project.textContent, project.whiteboardContent, project.fileSystemRoots]);
 
 
   return (
@@ -56,7 +66,7 @@ export function ProjectCard({ project, onDeleteProject, onShareProject }: Projec
       </CardHeader>
       <CardContent className="flex-grow space-y-2">
         <div className="flex items-start space-x-2 text-sm text-muted-foreground">
-          <FileText className="h-4 w-4 mt-0.5 shrink-0" /> 
+          <FileText className="h-4 w-4 mt-0.5 shrink-0" />
           <span className="line-clamp-2 break-all">
             {textSnippet ? `${textSnippet.substring(0, 60)}...` : "Empty document"}
           </span>
@@ -72,7 +82,7 @@ export function ProjectCard({ project, onDeleteProject, onShareProject }: Projec
           <span>
             {fileSystemItemCount > 0 ? `${fileSystemItemCount} project file${fileSystemItemCount === 1 ? '' : 's'}` : "No project files"}
           </span>
-        </div> 
+        </div>
       </CardContent>
       <CardFooter className="flex justify-between">
         <Button asChild variant="default" size="sm">
@@ -112,3 +122,4 @@ export function ProjectCard({ project, onDeleteProject, onShareProject }: Projec
   );
 }
 
+export const ProjectCard = React.memo(ProjectCardComponent);
