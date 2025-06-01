@@ -1,8 +1,8 @@
 
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, useRef, Suspense } from "react"; // Added Suspense
+import { useParams, useRouter, useSearchParams } from "next/navigation"; // Added useSearchParams
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { Whiteboard } from "@/components/Whiteboard";
 import type { Project, WhiteboardData, FileSystemNode, ExcalidrawAppState } from "@/lib/types";
@@ -180,12 +180,17 @@ const addNodeToTargetInTree = (
 };
 
 
-export default function ProjectPage() {
+function ProjectPageContent() {
   const router = useRouter();
   const params = useParams();
   const projectId = params.projectId as string;
   const { toast } = useToast();
   const { currentProjectName: currentProjectNameFromContext, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder } = useProjectContext();
+  
+  const searchParams = useSearchParams();
+  const initialIsShared = searchParams.get('shared') === 'true';
+  const [isReadOnlyView, setIsReadOnlyView] = useState(initialIsShared);
+
 
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [isLoadingProject, setIsLoadingProject] = useState(true);
@@ -220,6 +225,25 @@ export default function ProjectPage() {
   const isSavingRef = useRef(false);
   const lastSavedToServerTimestampRef = useRef<string | null>(null);
   const lastLocalUpdateTimestampRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+
+  useEffect(() => {
+    const currentIsShared = searchParams.get('shared') === 'true';
+    if (currentIsShared !== isReadOnlyView) {
+        setIsReadOnlyView(currentIsShared);
+    }
+    
+    if (currentIsShared && mounted) { 
+      toast({
+        title: "Read-Only Mode",
+        description: "You are viewing a shared project. Changes cannot be saved.",
+      });
+    }
+  }, [searchParams, toast, mounted, isReadOnlyView]);
 
 
   const updateLocalStateFromProject = useCallback((projectData: Project | null, source: "initialLoad" | "realtimeUpdate" = "initialLoad") => {
@@ -272,7 +296,6 @@ export default function ProjectPage() {
 
 
   useEffect(() => {
-    setMounted(true);
     let unsubscribeRealtime: (() => void) | null = null;
 
     async function fetchAndInitializeProject() {
@@ -318,7 +341,10 @@ export default function ProjectPage() {
         setIsLoadingProject(false);
       }
     }
-    fetchAndInitializeProject();
+    
+    if (mounted) { // Ensure mounted before fetching
+        fetchAndInitializeProject();
+    }
     
     if (typeof registerTriggerNewFile === 'function') {
         registerTriggerNewFile(() => {
@@ -341,7 +367,7 @@ export default function ProjectPage() {
         unsubscribeRealtime();
       }
     };
-  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder]); // Removed updateLocalStateFromProject from dependencies
+  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder, updateLocalStateFromProject, mounted]);
 
 
   useEffect(() => {
@@ -349,6 +375,10 @@ export default function ProjectPage() {
   }, [activeWhiteboardData]);
 
   const performSave = useCallback(async (projectToSave: Project | null) => {
+    if (isReadOnlyView) {
+      console.log("[ProjectPage] In read-only view, save skipped.");
+      return;
+    }
     if (!projectToSave || isSavingRef.current) return;
     
     isSavingRef.current = true;
@@ -371,10 +401,14 @@ export default function ProjectPage() {
     } finally {
       isSavingRef.current = false;
     }
-  }, [currentProjectNameFromContext, setCurrentProjectName, toast]);
+  }, [currentProjectNameFromContext, setCurrentProjectName, toast, isReadOnlyView]);
 
 
   useEffect(() => {
+    if (isReadOnlyView) {
+        console.log("[ProjectPage] In read-only view, auto-save and project updates skipped.");
+        return;
+    }
     if (!mounted || isLoadingProject || !currentProject) return;
 
     const currentLocalTimestamp = new Date().toISOString();
@@ -419,10 +453,11 @@ export default function ProjectPage() {
     projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots, 
     editingProjectName, 
     mounted, isLoadingProject, currentProject, 
-    performSave, toast
+    performSave, toast, isReadOnlyView
   ]);
 
   const handleTextChange = useCallback((newText: string) => {
+    if (isReadOnlyView) return;
     setActiveTextContent(newText); 
     if (selectedFileNodeId) { 
       setActiveFileSystemRoots(prevRoots => 
@@ -431,13 +466,26 @@ export default function ProjectPage() {
     } else { 
       setProjectRootTextContent(newText); 
     }
-  }, [selectedFileNodeId]); 
+  }, [selectedFileNodeId, isReadOnlyView]); 
   
   const handleWhiteboardChange = useCallback((newData: WhiteboardData) => {
+    if (isReadOnlyView) return;
+
     const oldElementsString = JSON.stringify(activeWhiteboardDataRef.current?.elements || []);
     const newElementsString = JSON.stringify(newData.elements || []);
-    const oldAppStateString = JSON.stringify(activeWhiteboardDataRef.current?.appState || {});
-    const newAppStateString = JSON.stringify(newData.appState || {});
+    
+    const oldAppStateString = JSON.stringify({
+      viewBackgroundColor: activeWhiteboardDataRef.current?.appState?.viewBackgroundColor,
+      zoom: activeWhiteboardDataRef.current?.appState?.zoom,
+      scrollX: activeWhiteboardDataRef.current?.appState?.scrollX,
+      scrollY: activeWhiteboardDataRef.current?.appState?.scrollY,
+    });
+    const newAppStateString = JSON.stringify({
+      viewBackgroundColor: newData.appState?.viewBackgroundColor,
+      zoom: newData.appState?.zoom,
+      scrollX: newData.appState?.scrollX,
+      scrollY: newData.appState?.scrollY,
+    });
 
 
     if (newElementsString !== oldElementsString || newAppStateString !== oldAppStateString) {
@@ -451,9 +499,13 @@ export default function ProjectPage() {
             setProjectRootWhiteboardData(newData); 
         }
     }
-  }, [selectedFileNodeId]); 
+  }, [selectedFileNodeId, isReadOnlyView]); 
   
   const handleNameEditToggle = useCallback(async () => {
+    if (isReadOnlyView) {
+      toast({ title: "Read-Only Mode", description: "Project name cannot be changed in read-only view.", variant: "default" });
+      return;
+    }
     if (isEditingName && currentProject) {
       const newName = editingProjectName.trim();
       if (newName && newName !== currentProject.name) {
@@ -489,10 +541,14 @@ export default function ProjectPage() {
       }
     }
     setIsEditingName(!isEditingName);
-  }, [isEditingName, currentProject, editingProjectName, setCurrentProjectName, toast, projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots, performSave]);
+  }, [isReadOnlyView, isEditingName, currentProject, editingProjectName, setCurrentProjectName, toast, projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots, performSave]);
 
 
   const confirmDeleteProject = useCallback(async () => {
+    if (isReadOnlyView) {
+      toast({ title: "Read-Only Mode", description: "Project cannot be deleted in read-only view.", variant: "default" });
+      return;
+    }
     if (!currentProject) return;
     try {
       await deleteProjectFromFirestore(currentProject.id); 
@@ -501,19 +557,24 @@ export default function ProjectPage() {
     } catch (error) {
       setTimeout(() => toast({ title: "Error Deleting Project", description: "Could not delete project from cloud.", variant: "destructive" }), 0);
     }
-  }, [currentProject, router, toast]);
+  }, [currentProject, router, toast, isReadOnlyView]);
 
 
   const handleOpenNewItemDialog = useCallback((type: 'file' | 'folder', parentNodeId: string | null) => {
+    if (isReadOnlyView) {
+      toast({ title: "Read-Only Mode", description: "Cannot create new items in read-only view.", variant: "default" });
+      return;
+    }
     setNewItemType(type);
     setParentIdForNewItem(parentNodeId);
     setNewItemName("");
     setNewItemError("");
     setIsNewItemDialogOpen(true);
-  }, []);
+  }, [isReadOnlyView, toast]);
 
 
   const handleCreateNewItem = useCallback(() => {
+    if (isReadOnlyView) return;
     if (!newItemName.trim() || !newItemType ) {
       setNewItemError(`Name cannot be empty.`);
       return;
@@ -534,7 +595,7 @@ export default function ProjectPage() {
     setTimeout(() => toast({ title: `${newItemType === 'file' ? 'File' : 'Folder'} Created`, description: `"${newNode.name}" added locally. Will sync shortly.`}), 0);
     setIsNewItemDialogOpen(false);
     setNewItemType(null);
-  }, [newItemName, newItemType, parentIdForNewItem, toast]);
+  }, [newItemName, newItemType, parentIdForNewItem, toast, isReadOnlyView]);
   
 
   const handleNodeSelectedInExplorer = useCallback(async (selectedNode: FileSystemNode | null) => {
@@ -543,12 +604,12 @@ export default function ProjectPage() {
         return;
     }
     
-    if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
+    if (!isReadOnlyView && saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
       clearTimeout(saveTimeoutRef.current);
       saveTimeoutRef.current = null; 
       await performSave(pendingSaveDataRef.current.project); 
       pendingSaveDataRef.current = null; 
-    } else if (pendingSaveDataRef.current?.project && !saveTimeoutRef.current) {
+    } else if (!isReadOnlyView && pendingSaveDataRef.current?.project && !saveTimeoutRef.current) {
       await performSave(pendingSaveDataRef.current.project);
       pendingSaveDataRef.current = null;
     }
@@ -566,14 +627,19 @@ export default function ProjectPage() {
         setActiveWhiteboardData({...projectRootWhiteboardData});
         activeWhiteboardDataRef.current = {...projectRootWhiteboardData};
     }
-  }, [performSave, projectRootTextContent, projectRootWhiteboardData, toast]);
+  }, [performSave, projectRootTextContent, projectRootWhiteboardData, toast, isReadOnlyView]);
 
 
   const handleDeleteNodeRequest = useCallback((nodeId: string) => {
+    if (isReadOnlyView) {
+      toast({ title: "Read-Only Mode", description: "Cannot delete items in read-only view.", variant: "default" });
+      return;
+    }
     setNodeToDeleteId(nodeId); 
-  }, []);
+  }, [isReadOnlyView, toast]);
 
   const confirmDeleteNode = useCallback(async () => {
+    if (isReadOnlyView) return;
     if (!nodeToDeleteId || !currentProject || isSavingRef.current) return;
     
     if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
@@ -600,7 +666,7 @@ export default function ProjectPage() {
     setNodeToDeleteId(null); 
   }, [
     nodeToDeleteId, selectedFileNodeId, projectRootTextContent, projectRootWhiteboardData, 
-    activeFileSystemRoots, performSave, currentProject, toast,
+    activeFileSystemRoots, performSave, currentProject, toast, isReadOnlyView,
   ]);
 
 
@@ -613,6 +679,10 @@ export default function ProjectPage() {
   }, [handleOpenNewItemDialog]);
 
   const handleMoveNode = useCallback((draggedNodeId: string, targetFolderId: string | null) => {
+    if (isReadOnlyView) {
+      toast({ title: "Read-Only Mode", description: "Cannot move items in read-only view.", variant: "default" });
+      return;
+    }
     if (draggedNodeId === targetFolderId) {
         setTimeout(() => toast({ title: "Invalid Move", description: "Cannot move an item into itself.", variant: "destructive" }), 0);
         return;
@@ -655,7 +725,7 @@ export default function ProjectPage() {
       setTimeout(() => toast({ title: "Item Moved", description: `"${removedNode.name}" moved locally. Will sync shortly.` }), 0);
       return newRootsWithMovedNode;
     });
-  }, [toast]);
+  }, [toast, isReadOnlyView]);
 
 
   if (!mounted || isLoadingProject || !currentProject) {
@@ -698,17 +768,21 @@ export default function ProjectPage() {
                 onKeyDown={(e) => e.key === 'Enter' && handleNameEditToggle()}
                 className="h-9 text-lg font-semibold max-w-[150px] sm:max-w-xs"
                 autoFocus
+                readOnly={isReadOnlyView}
               />
             ) : (
-              <h1 className="text-lg font-semibold truncate max-w-[150px] sm:max-w-xs cursor-pointer hover:underline" onClick={handleNameEditToggle}>
+              <h1 className="text-lg font-semibold truncate max-w-[150px] sm:max-w-xs cursor-pointer hover:underline" onClick={!isReadOnlyView ? handleNameEditToggle : undefined}>
                 {editingProjectName} 
               </h1>
             )}
-            <Button variant="ghost" size="icon" onClick={handleNameEditToggle} className="ml-1 mr-2" aria-label="Edit project name">
-              {isEditingName ? <Check className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
-            </Button>
+            {!isReadOnlyView && (
+                <Button variant="ghost" size="icon" onClick={handleNameEditToggle} className="ml-1 mr-2" aria-label="Edit project name">
+                {isEditingName ? <Check className="h-4 w-4" /> : <Edit className="h-4 w-4" />}
+                </Button>
+            )}
           </div>
 
+        {!isReadOnlyView && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="px-2">
@@ -727,6 +801,7 @@ export default function ProjectPage() {
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+        )}
 
           <div className="ml-auto flex items-center gap-2">
             <Button 
@@ -755,28 +830,30 @@ export default function ProjectPage() {
             <Button variant="outline" onClick={() => setIsShareDialogOpen(true)}>
               <Share2 className="mr-2 h-4 w-4" /> Share
             </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="icon" aria-label="Delete project">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete the
-                    project "{currentProject.name}" from the cloud.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={confirmDeleteProject}>
-                    Delete Project
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+            {!isReadOnlyView && (
+                <AlertDialog>
+                <AlertDialogTrigger asChild>
+                    <Button variant="destructive" size="icon" aria-label="Delete project">
+                    <Trash2 className="h-4 w-4" />
+                    </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        This action cannot be undone. This will permanently delete the
+                        project "{currentProject.name}" from the cloud.
+                    </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={confirmDeleteProject}>
+                        Delete Project
+                    </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+                </AlertDialog>
+            )}
           </div>
         </div>
       </header>
@@ -794,6 +871,7 @@ export default function ProjectPage() {
                     onAddFolderToFolder={onAddFolderToFolderCallback}
                     selectedNodeId={selectedFileNodeId} 
                     onMoveNode={handleMoveNode}
+                    isReadOnly={isReadOnlyView}
                   />
                 </div>
               </ResizablePanel>
@@ -807,6 +885,7 @@ export default function ProjectPage() {
                   key={editorKey} 
                   value={activeTextContent} 
                   onChange={handleTextChange}
+                  isReadOnly={isReadOnlyView}
                 />
               </div>
             )}
@@ -816,7 +895,7 @@ export default function ProjectPage() {
                   key={whiteboardKey}
                   initialData={activeWhiteboardData}
                   onChange={handleWhiteboardChange}
-                  isReadOnly={false} 
+                  isReadOnly={isReadOnlyView} 
                 />
               </div>
             )}
@@ -828,6 +907,7 @@ export default function ProjectPage() {
                       key={`${editorKey}-both`}
                       value={activeTextContent} 
                       onChange={handleTextChange}
+                      isReadOnly={isReadOnlyView}
                     />
                   </div>
                 </ResizablePanel>
@@ -838,7 +918,7 @@ export default function ProjectPage() {
                       key={`${whiteboardKey}-both`}
                       initialData={activeWhiteboardData}
                       onChange={handleWhiteboardChange}
-                      isReadOnly={false}
+                      isReadOnly={isReadOnlyView}
                     />
                   </div>
                 </ResizablePanel>
@@ -856,6 +936,7 @@ export default function ProjectPage() {
         />
       )}
 
+    {!isReadOnlyView && (
       <Dialog open={isNewItemDialogOpen} onOpenChange={setIsNewItemDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
@@ -892,7 +973,8 @@ export default function ProjectPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
+    )}
+    {!isReadOnlyView && (
       <AlertDialog open={!!nodeToDeleteId} onOpenChange={(open) => !open && setNodeToDeleteId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -911,8 +993,18 @@ export default function ProjectPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    )}
     </div>
   );
 }
+
+export default function ProjectPage() {
+  return (
+    <Suspense fallback={<div>Loading URL parameters...</div>}>
+      <ProjectPageContent />
+    </Suspense>
+  )
+}
+    
 
     

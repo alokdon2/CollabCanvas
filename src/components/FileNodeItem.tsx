@@ -26,6 +26,7 @@ interface FileNodeItemProps {
   onAddFileToFolder: (folderId: string | null) => void;
   onAddFolderToFolder: (folderId: string | null) => void;
   onMoveNode: (draggedNodeId: string, targetFolderId: string | null) => void;
+  isReadOnly?: boolean;
 }
 
 export function FileNodeItem({
@@ -39,6 +40,7 @@ export function FileNodeItem({
   onAddFileToFolder,
   onAddFolderToFolder,
   onMoveNode,
+  isReadOnly = false,
 }: FileNodeItemProps) {
   const isFolder = node.type === "folder";
   const currentIsExpanded = isFolder && expandedFoldersInExplorer.has(node.id);
@@ -58,11 +60,13 @@ export function FileNodeItem({
 
   const handleDeleteClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isReadOnly) return;
     onDeleteNode(node.id);
   };
 
   const handleAddFileClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isReadOnly) return;
     if (isFolder) {
       onAddFileToFolder(node.id);
     }
@@ -70,20 +74,25 @@ export function FileNodeItem({
 
   const handleAddFolderClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (isReadOnly) return;
     if (isFolder) {
       onAddFolderToFolder(node.id);
     }
   };
 
   const handleDragStart = (event: React.DragEvent<HTMLDivElement>) => {
+    if (isReadOnly) {
+        event.preventDefault();
+        return;
+    }
     event.dataTransfer.setData("application/node-id", node.id);
     event.dataTransfer.effectAllowed = "move";
-    // (event.target as HTMLElement).style.opacity = '0.5'; 
   };
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (isReadOnly) return;
     event.preventDefault(); 
-    event.stopPropagation(); // Prevent FileExplorer's root onDragOver while over an item
+    event.stopPropagation(); 
     event.dataTransfer.dropEffect = "move";
     if (isFolder) { 
       setIsDragOver(true);
@@ -91,6 +100,7 @@ export function FileNodeItem({
   };
 
   const handleDragEnter = (event: React.DragEvent<HTMLDivElement>) => {
+    if (isReadOnly) return;
     event.preventDefault();
     event.stopPropagation();
     if (isFolder) {
@@ -99,17 +109,16 @@ export function FileNodeItem({
   };
 
   const handleDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
+    if (isReadOnly) return;
     event.stopPropagation();
     const currentTarget = event.currentTarget as HTMLElement;
-    // Only set isDragOver to false if the mouse truly leaves this item
-    // and doesn't just enter one of its children (if it had draggable children)
-    // or a very near part of itself that might trigger a quick leave/enter.
     if (!currentTarget.contains(event.relatedTarget as Node)) {
         setIsDragOver(false);
     }
   };
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (isReadOnly) return;
     event.preventDefault();
     event.stopPropagation(); 
     setIsDragOver(false);
@@ -124,18 +133,19 @@ export function FileNodeItem({
 
 
   return (
-    <div className="flex flex-col" data-filenodeitem="true"> {/* Added data-filenodeitem attribute */}
+    <div className="flex flex-col" data-filenodeitem="true"> 
       <div
-        draggable={true}
+        draggable={!isReadOnly}
         onDragStart={handleDragStart}
         onDragOver={handleDragOver}
         onDragEnter={handleDragEnter}
         onDragLeave={handleDragLeave}
-        onDrop={isFolder ? handleDrop : undefined} 
+        onDrop={isFolder && !isReadOnly ? handleDrop : undefined} 
         className={cn(
-          "flex items-center py-1.5 px-2 rounded-md cursor-pointer group hover:bg-accent",
+          "flex items-center py-1.5 px-2 rounded-md group hover:bg-accent",
+          isReadOnly ? "cursor-default" : "cursor-pointer",
           currentIsSelected && "bg-accent text-accent-foreground",
-          isDragOver && isFolder && "bg-primary/20 ring-2 ring-primary" 
+          isDragOver && isFolder && !isReadOnly && "bg-primary/20 ring-2 ring-primary" 
         )}
         style={{ paddingLeft: `${level * 1.25 + 0.5}rem` }} 
         onClick={handleNodeClick}
@@ -168,41 +178,43 @@ export function FileNodeItem({
         )}
         <span className="text-sm truncate flex-grow">{node.name}</span>
         
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-6 w-6 ml-auto p-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100"
-              onClick={(e) => e.stopPropagation()} 
+        {!isReadOnly && (
+            <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 ml-auto p-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100"
+                onClick={(e) => e.stopPropagation()} 
+                >
+                <MoreHorizontal className="h-4 w-4" />
+                <span className="sr-only">More options</span>
+                </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent 
+                onClick={(e) => e.stopPropagation()} 
+                side="right" 
+                align="start"
             >
-              <MoreHorizontal className="h-4 w-4" />
-              <span className="sr-only">More options</span>
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent 
-            onClick={(e) => e.stopPropagation()} 
-            side="right" 
-            align="start"
-          >
-            {isFolder && (
-              <>
-                <DropdownMenuItem onClick={handleAddFileClick}>
-                  <FilePlus2 className="mr-2 h-4 w-4" />
-                  New File
+                {isFolder && (
+                <>
+                    <DropdownMenuItem onClick={handleAddFileClick}>
+                    <FilePlus2 className="mr-2 h-4 w-4" />
+                    New File
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={handleAddFolderClick}>
+                    <FolderPlus className="mr-2 h-4 w-4" />
+                    New Folder
+                    </DropdownMenuItem>
+                </>
+                )}
+                <DropdownMenuItem onClick={handleDeleteClick} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={handleAddFolderClick}>
-                  <FolderPlus className="mr-2 h-4 w-4" />
-                  New Folder
-                </DropdownMenuItem>
-              </>
-            )}
-            <DropdownMenuItem onClick={handleDeleteClick} className="text-destructive focus:text-destructive focus:bg-destructive/10">
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </DropdownMenuContent>
+            </DropdownMenu>
+        )}
 
       </div>
       {isFolder && currentIsExpanded && node.children && node.children.length > 0 && (
@@ -220,6 +232,7 @@ export function FileNodeItem({
               onAddFileToFolder={onAddFileToFolder}
               onAddFolderToFolder={onAddFolderToFolder}
               onMoveNode={onMoveNode}
+              isReadOnly={isReadOnly}
             />
           ))}
         </div>
@@ -235,3 +248,5 @@ export function FileNodeItem({
     </div>
   );
 }
+
+    

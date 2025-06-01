@@ -15,6 +15,7 @@ interface FileExplorerProps {
   onAddFolderToFolder: (folderId: string | null) => void;
   selectedNodeId: string | null; 
   onMoveNode: (draggedNodeId: string, targetFolderId: string | null) => void;
+  isReadOnly?: boolean;
 }
 
 export function FileExplorer({ 
@@ -25,6 +26,7 @@ export function FileExplorer({
     onAddFolderToFolder,
     selectedNodeId,
     onMoveNode, 
+    isReadOnly = false,
 }: FileExplorerProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [isRootDragOver, setIsRootDragOver] = useState(false);
@@ -48,34 +50,29 @@ export function FileExplorer({
   }, [onNodeSelect]);
 
   const handleRootDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    if (isReadOnly) return;
     event.preventDefault();
     setIsRootDragOver(false); 
-    // If a child FileNodeItem (folder) handled the drop, it would have called event.stopPropagation().
-    // So, if the event reaches here, it's a drop on the root area.
     const draggedNodeId = event.dataTransfer.getData("application/node-id");
     if (draggedNodeId) {
-      onMoveNode(draggedNodeId, null); // null targetFolderId for root
+      onMoveNode(draggedNodeId, null); 
     }
   };
 
   const handleRootDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (isReadOnly) return;
     event.preventDefault(); 
     event.dataTransfer.dropEffect = "move";
-    // Only set root drag over if not already over a specific child FileNodeItem that might have its own indicator.
-    // This can be tricky. For simplicity, we'll set it. FileNodeItem's onDragLeave might cause flicker.
     if (event.dataTransfer.types.includes("application/node-id")) {
         setIsRootDragOver(true);
     }
   };
 
   const handleRootDragLeave = (event: React.DragEvent<HTMLDivElement>) => {
-    // Check if the mouse is leaving the actual FileExplorer component bounds
+    if (isReadOnly) return;
     if (!event.currentTarget.contains(event.relatedTarget as Node)) {
       setIsRootDragOver(false);
     }
-    // If event.relatedTarget is a child FileNodeItem, FileNodeItem's onDragEnter/onDragOver will handle its own visuals.
-    // This simple check might still cause flickering if moving quickly between root and items.
-    // A more robust solution might involve checking event.target in onDragOver.
     const targetIsFileNodeItem = (event.relatedTarget as HTMLElement)?.closest('[data-filenodeitem="true"]');
     if (targetIsFileNodeItem) {
         setIsRootDragOver(false);
@@ -99,6 +96,7 @@ export function FileExplorer({
         onAddFileToFolder={onAddFileToFolder}
         onAddFolderToFolder={onAddFolderToFolder}
         onMoveNode={onMoveNode}
+        isReadOnly={isReadOnly}
       />
     ));
   };
@@ -107,11 +105,11 @@ export function FileExplorer({
     <div 
       className={cn(
         "h-full w-full flex flex-col bg-card text-card-foreground rounded-lg border shadow-sm p-2",
-        isRootDragOver && "bg-primary/10 ring-2 ring-primary" // Visual feedback for root drag over
+        isRootDragOver && !isReadOnly && "bg-primary/10 ring-2 ring-primary" 
       )}
-      onDrop={handleRootDrop}
-      onDragOver={handleRootDragOver}
-      onDragLeave={handleRootDragLeave} // Added drag leave for root
+      onDrop={!isReadOnly ? handleRootDrop : undefined}
+      onDragOver={!isReadOnly ? handleRootDragOver : undefined}
+      onDragLeave={!isReadOnly ? handleRootDragLeave : undefined}
     >
       <ScrollArea className="flex-grow">
         <div className="space-y-0.5">
@@ -120,8 +118,7 @@ export function FileExplorer({
           ) : (
             <p className="p-4 text-sm text-muted-foreground text-center">
               No files or folders.
-              <br />
-              Use the '+' in the top bar to add items.
+              {!isReadOnly && <><br />Use the '+' in the top bar to add items.</>}
             </p>
           )}
         </div>
@@ -129,3 +126,5 @@ export function FileExplorer({
     </div>
   );
 }
+
+    

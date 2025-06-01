@@ -15,8 +15,8 @@ import {
   Heading3,
   List,
   ListOrdered,
-  Sparkles, // Used for AI Enhance
-  Pilcrow, // Used for Auto-Format
+  Sparkles, 
+  Pilcrow, 
   Loader2,
   Code, 
   SquareCode, 
@@ -28,11 +28,11 @@ import {
   AlignCenter, 
   AlignRight, 
   AlignJustify, 
-  ListCollapse, // Used for Summarize
-  MessageSquareQuote, // Changed from MessageSquareQuestion to MessageSquareQuote
+  ListCollapse, 
+  MessageSquareQuote, 
 } from "lucide-react";
 import { AITextEnhancementDialog } from "./AITextEnhancementDialog";
-import { AskAiDialog } from "./AskAiDialog"; // Added AskAiDialog
+import { AskAiDialog } from "./AskAiDialog"; 
 import { generateProjectSummary, type GenerateProjectSummaryOutput } from "@/ai/flows/generate-project-summary";
 import { autoFormatText, type AutoFormatTextOutput } from "@/ai/flows/autoformat-text-flow";
 import { useToast } from "@/hooks/use-toast";
@@ -54,7 +54,6 @@ import { Textarea } from './ui/textarea';
 import { cn } from '@/lib/utils';
 import { Separator } from "@/components/ui/separator";
 
-// TipTap Extensions
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import ImageExtension from '@tiptap/extension-image';
 import TableExtension from '@tiptap/extension-table';
@@ -66,11 +65,10 @@ import HardBreak from '@tiptap/extension-hard-break';
 import HorizontalRule from '@tiptap/extension-horizontal-rule';
 import TextAlign from '@tiptap/extension-text-align';
 
-// Lowlight and highlight.js for CodeBlockLowlight
 import { createLowlight } from 'lowlight';
 import javascript from 'highlight.js/lib/languages/javascript';
 import css from 'highlight.js/lib/languages/css';
-import html from 'highlight.js/lib/languages/xml'; // xml for html
+import html from 'highlight.js/lib/languages/xml'; 
 import typescript from 'highlight.js/lib/languages/typescript';
 import python from 'highlight.js/lib/languages/python';
 import java from 'highlight.js/lib/languages/java';
@@ -80,7 +78,6 @@ import php from 'highlight.js/lib/languages/php';
 import shell from 'highlight.js/lib/languages/shell';
 import markdown from 'highlight.js/lib/languages/markdown';
 
-// Create a grammars map for lowlight
 const grammars = {
   javascript,
   js: javascript,
@@ -107,6 +104,7 @@ const lowlightInstance = createLowlight(grammars);
 interface RichTextEditorProps {
   value: string;
   onChange: (value: string) => void;
+  isReadOnly?: boolean;
 }
 
 interface SlashCommand {
@@ -120,19 +118,21 @@ const TipTapToolbar = ({
   onAiEnhance,
   onAutoFormat,
   onSummarize,
-  onAskAi, // Added onAskAi
+  onAskAi, 
   onInsertImage,
   isAiLoading,
   activeAiTool,
+  isReadOnly = false,
 }: {
   editor: Editor | null;
   onAiEnhance: () => void;
   onAutoFormat: () => void;
   onSummarize: () => void;
-  onAskAi: () => void; // Added onAskAi
+  onAskAi: () => void; 
   onInsertImage: () => void;
   isAiLoading: boolean;
   activeAiTool: string | null;
+  isReadOnly?: boolean;
 }) => {
   if (!editor) {
     return null;
@@ -140,13 +140,13 @@ const TipTapToolbar = ({
 
   return (
     <div className="p-2 m-2 rounded-lg shadow-xl bg-background/90 backdrop-blur-sm flex items-center gap-1 flex-wrap sticky top-2 z-10">
-      {/* Formatting Group */}
       <div className="flex items-center gap-1 flex-wrap">
         <Button
           onClick={() => editor.chain().focus().toggleBold().run()}
           variant={editor.isActive('bold') ? 'secondary' : 'ghost'}
           size="icon"
           title="Bold"
+          disabled={isReadOnly}
         >
           <Bold className="h-4 w-4" />
         </Button>
@@ -155,6 +155,7 @@ const TipTapToolbar = ({
           variant={editor.isActive('italic') ? 'secondary' : 'ghost'}
           size="icon"
           title="Italic"
+          disabled={isReadOnly}
         >
           <Italic className="h-4 w-4" />
         </Button>
@@ -163,6 +164,7 @@ const TipTapToolbar = ({
           variant={editor.isActive('heading', { level: 1 }) ? 'secondary' : 'ghost'}
           size="icon"
           title="Heading 1"
+          disabled={isReadOnly}
         >
           <Heading1 className="h-4 w-4" />
         </Button>
@@ -171,6 +173,7 @@ const TipTapToolbar = ({
           variant={editor.isActive('heading', { level: 2 }) ? 'secondary' : 'ghost'}
           size="icon"
           title="Heading 2"
+          disabled={isReadOnly}
         >
           <Heading2 className="h-4 w-4" />
         </Button>
@@ -179,6 +182,7 @@ const TipTapToolbar = ({
           variant={editor.isActive('heading', { level: 3 }) ? 'secondary' : 'ghost'}
           size="icon"
           title="Heading 3"
+          disabled={isReadOnly}
         >
           <Heading3 className="h-4 w-4" />
         </Button>
@@ -187,6 +191,7 @@ const TipTapToolbar = ({
           variant={editor.isActive('bulletList') ? 'secondary' : 'ghost'}
           size="icon"
           title="Bullet List"
+          disabled={isReadOnly}
         >
           <List className="h-4 w-4" />
         </Button>
@@ -195,6 +200,7 @@ const TipTapToolbar = ({
           variant={editor.isActive('orderedList') ? 'secondary' : 'ghost'}
           size="icon"
           title="Ordered List"
+          disabled={isReadOnly}
         >
           <ListOrdered className="h-4 w-4" />
         </Button>
@@ -202,13 +208,13 @@ const TipTapToolbar = ({
       
       <Separator orientation="vertical" className="h-6 mx-1 bg-border" />
       
-      {/* Alignment Group */}
       <div className="flex items-center gap-1 flex-wrap">
         <Button
           onClick={() => editor.chain().focus().setTextAlign('left').run()}
           variant={editor.isActive({ textAlign: 'left' }) ? 'secondary' : 'ghost'}
           size="icon"
           title="Align Left"
+          disabled={isReadOnly}
         >
           <AlignLeft className="h-4 w-4" />
         </Button>
@@ -217,6 +223,7 @@ const TipTapToolbar = ({
           variant={editor.isActive({ textAlign: 'center' }) ? 'secondary' : 'ghost'}
           size="icon"
           title="Align Center"
+          disabled={isReadOnly}
         >
           <AlignCenter className="h-4 w-4" />
         </Button>
@@ -225,6 +232,7 @@ const TipTapToolbar = ({
           variant={editor.isActive({ textAlign: 'right' }) ? 'secondary' : 'ghost'}
           size="icon"
           title="Align Right"
+          disabled={isReadOnly}
         >
           <AlignRight className="h-4 w-4" />
         </Button>
@@ -233,6 +241,7 @@ const TipTapToolbar = ({
           variant={editor.isActive({ textAlign: 'justify' }) ? 'secondary' : 'ghost'}
           size="icon"
           title="Align Justify"
+          disabled={isReadOnly}
         >
           <AlignJustify className="h-4 w-4" />
         </Button>
@@ -240,13 +249,13 @@ const TipTapToolbar = ({
       
       <Separator orientation="vertical" className="h-6 mx-1 bg-border" />
       
-      {/* Block Elements Group */}
       <div className="flex items-center gap-1 flex-wrap">
          <Button
           onClick={() => editor.chain().focus().toggleCode().run()}
           variant={editor.isActive('code') ? 'secondary' : 'ghost'}
           size="icon"
           title="Inline Code"
+          disabled={isReadOnly}
         >
           <Code className="h-4 w-4" />
         </Button>
@@ -255,6 +264,7 @@ const TipTapToolbar = ({
           variant={editor.isActive('blockquote') ? 'secondary' : 'ghost'}
           size="icon"
           title="Blockquote"
+          disabled={isReadOnly}
         >
           <Quote className="h-4 w-4" />
         </Button>
@@ -263,6 +273,7 @@ const TipTapToolbar = ({
           variant={editor.isActive('codeBlock') ? 'secondary' : 'ghost'}
           size="icon"
           title="Code Block"
+          disabled={isReadOnly}
         >
           <SquareCode className="h-4 w-4" />
         </Button>
@@ -271,6 +282,7 @@ const TipTapToolbar = ({
           variant={'ghost'}
           size="icon"
           title="Insert Divider"
+          disabled={isReadOnly}
         >
           <Minus className="h-4 w-4" />
         </Button>
@@ -279,6 +291,7 @@ const TipTapToolbar = ({
           variant={'ghost'}
           size="icon"
           title="Insert Table"
+          disabled={isReadOnly}
         >
           <TableIcon className="h-4 w-4" />
         </Button>
@@ -287,57 +300,60 @@ const TipTapToolbar = ({
           variant={'ghost'}
           size="icon"
           title="Insert Image"
+          disabled={isReadOnly}
         >
           <ImageIcon className="h-4 w-4" />
         </Button>
       </div>
       
-      <Separator orientation="vertical" className="h-6 mx-1 bg-border" />
-      
-      {/* AI Tools Group */}
-      <div className="flex items-center gap-1 flex-wrap">
-        <Button
-          onClick={onAskAi} // Added Ask AI button
-          variant="ghost"
-          size="icon"
-          title="Ask AI"
-          disabled={isAiLoading}
-        >
-          {isAiLoading && activeAiTool === 'askAi' ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareQuote className="h-4 w-4" />}
-        </Button>
-        <Button
-          onClick={onAiEnhance}
-          variant="ghost"
-          size="icon"
-          title="AI Enhance Text"
-          disabled={isAiLoading}
-        >
-          {isAiLoading && activeAiTool === 'aiEnhance' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-        </Button>
-        <Button
-          onClick={onAutoFormat}
-          variant="ghost"
-          size="icon"
-          title="AI Auto-Format"
-          disabled={isAiLoading}
-        >
-           {isAiLoading && activeAiTool === 'aiAutoFormat' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pilcrow className="h-4 w-4" />}
-        </Button>
-        <Button
-          onClick={onSummarize}
-          variant="ghost"
-          size="icon"
-          title="Summarize Document"
-          disabled={isAiLoading}
-        >
-          {isAiLoading && activeAiTool === 'aiSummarize' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListCollapse className="h-4 w-4" />}
-        </Button>
-      </div>
+      {!isReadOnly && (
+        <>
+            <Separator orientation="vertical" className="h-6 mx-1 bg-border" />
+            <div className="flex items-center gap-1 flex-wrap">
+                <Button
+                onClick={onAskAi} 
+                variant="ghost"
+                size="icon"
+                title="Ask AI"
+                disabled={isAiLoading || isReadOnly}
+                >
+                {isAiLoading && activeAiTool === 'askAi' ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageSquareQuote className="h-4 w-4" />}
+                </Button>
+                <Button
+                onClick={onAiEnhance}
+                variant="ghost"
+                size="icon"
+                title="AI Enhance Text"
+                disabled={isAiLoading || isReadOnly}
+                >
+                {isAiLoading && activeAiTool === 'aiEnhance' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                </Button>
+                <Button
+                onClick={onAutoFormat}
+                variant="ghost"
+                size="icon"
+                title="AI Auto-Format"
+                disabled={isAiLoading || isReadOnly}
+                >
+                {isAiLoading && activeAiTool === 'aiAutoFormat' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pilcrow className="h-4 w-4" />}
+                </Button>
+                <Button
+                onClick={onSummarize}
+                variant="ghost"
+                size="icon"
+                title="Summarize Document"
+                disabled={isAiLoading || isReadOnly}
+                >
+                {isAiLoading && activeAiTool === 'aiSummarize' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListCollapse className="h-4 w-4" />}
+                </Button>
+            </div>
+        </>
+      )}
     </div>
   );
 };
 
-export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
+export function RichTextEditor({ value, onChange, isReadOnly = false }: RichTextEditorProps) {
   const { toast } = useToast();
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [activeAiTool, setActiveAiTool] = useState<string | null>(null);
@@ -353,8 +369,8 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   const [isImageDialogOpen, setIsImageDialogOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
 
-  const [isAskAiDialogOpen, setIsAskAiDialogOpen] = useState(false); // State for Ask AI dialog
-  const [initialQueryForAskAi, setInitialQueryForAskAi] = useState(""); // State for Ask AI initial query
+  const [isAskAiDialogOpen, setIsAskAiDialogOpen] = useState(false); 
+  const [initialQueryForAskAi, setInitialQueryForAskAi] = useState(""); 
 
   const [isSlashCommandMenuOpen, setIsSlashCommandMenuOpen] = useState(false);
   const [slashCommandAnchorPos, setSlashCommandAnchorPos] = useState<{ top: number; left: number } | null>(null);
@@ -373,7 +389,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
         horizontalRule: false,
       }),
       Placeholder.configure({
-        placeholder: "Start writing your document, or type '/ ' for commands...",
+        placeholder: isReadOnly ? "Viewing document..." : "Start writing your document, or type '/ ' for commands...",
       }),
       CodeBlockLowlight.configure({
         lowlight: lowlightInstance,
@@ -393,41 +409,44 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       }),
     ],
     content: value?.trim() && value !== "<p></p>" ? value : "<p></p>",
+    editable: !isReadOnly,
     onUpdate: ({ editor }) => {
-      onChange(editor.getHTML());
-      const { selection } = editor.state;
-      const { from, to } = selection;
+      if (!isReadOnly) {
+        onChange(editor.getHTML());
+        const { selection } = editor.state;
+        const { from, to } = selection;
 
-      if (selection.empty && from > 1 && !isSlashCommandMenuOpen) { 
-        const textBeforeCursor = editor.state.doc.textBetween(from - 2, from, "\n");
-        if (textBeforeCursor === "/ ") {
-          const coords = editor.view.coordsAtPos(from);
-          const wrapperRect = editorWrapperRef.current?.getBoundingClientRect();
+        if (selection.empty && from > 1 && !isSlashCommandMenuOpen) { 
+          const textBeforeCursor = editor.state.doc.textBetween(from - 2, from, "\n");
+          if (textBeforeCursor === "/ ") {
+            const coords = editor.view.coordsAtPos(from);
+            const wrapperRect = editorWrapperRef.current?.getBoundingClientRect();
 
-          if (wrapperRect) {
-            const anchorTop = coords.bottom - wrapperRect.top;
-            const anchorLeft = coords.left - wrapperRect.left;
-            setSlashCommandAnchorPos({ top: anchorTop, left: anchorLeft });
-          } else {
-            setSlashCommandAnchorPos({ top: coords.bottom, left: coords.left });
+            if (wrapperRect) {
+              const anchorTop = coords.bottom - wrapperRect.top;
+              const anchorLeft = coords.left - wrapperRect.left;
+              setSlashCommandAnchorPos({ top: anchorTop, left: anchorLeft });
+            } else {
+              setSlashCommandAnchorPos({ top: coords.bottom, left: coords.left });
+            }
+            
+            editor.chain().focus().deleteRange({ from: from - 2, to }).run();
+            setFocusedCommandIndex(0); 
+            setIsSlashCommandMenuOpen(true);
+            return; 
           }
-          
-          editor.chain().focus().deleteRange({ from: from - 2, to }).run();
-          setFocusedCommandIndex(0); 
-          setIsSlashCommandMenuOpen(true);
-          return; 
         }
       }
     },
     editorProps: {
       attributes: {
-        class: 'prose dark:prose-invert max-w-none p-4 focus:outline-none h-full',
+        class: cn('prose dark:prose-invert max-w-none p-4 focus:outline-none h-full', isReadOnly && 'cursor-default'),
       },
     },
-    autofocus: true,
+    autofocus: !isReadOnly,
   });
 
-  const slashCommands: SlashCommand[] = editor ? [
+  const slashCommands: SlashCommand[] = editor && !isReadOnly ? [
     { label: 'Heading 1', icon: Heading1, action: (e) => e.chain().focus().setNode('heading', { level: 1 }).run() },
     { label: 'Heading 2', icon: Heading2, action: (e) => e.chain().focus().setNode('heading', { level: 2 }).run() },
     { label: 'Heading 3', icon: Heading3, action: (e) => e.chain().focus().setNode('heading', { level: 3 }).run() },
@@ -449,13 +468,13 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   }, [slashCommands.length]);
 
   useEffect(() => {
-    if (isSlashCommandMenuOpen && menuContentRef.current) {
+    if (isSlashCommandMenuOpen && menuContentRef.current && !isReadOnly) {
       menuContentRef.current.focus(); 
       if (commandButtonRefs.current[focusedCommandIndex]) {
         commandButtonRefs.current[focusedCommandIndex]?.focus();
       }
     }
-  }, [isSlashCommandMenuOpen, focusedCommandIndex, slashCommands]);
+  }, [isSlashCommandMenuOpen, focusedCommandIndex, slashCommands, isReadOnly]);
 
 
   useEffect(() => {
@@ -465,7 +484,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
 
       if (currentHTML !== newContent) {
         const { from, to } = editor.state.selection;
-        editor.commands.setContent(newContent, false);
+        editor.commands.setContent(newContent, false); // Do not emit update to prevent loops
         if (editor.isFocused) { 
            try {
               if (from <= editor.state.doc.content.size && to <= editor.state.doc.content.size) {
@@ -478,8 +497,12 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
            }
         }
       }
+      // Sync read-only state
+      if (editor.isEditable === isReadOnly) { // isEditable will be true if not readonly
+          editor.setEditable(!isReadOnly);
+      }
     }
-  }, [value, editor]);
+  }, [value, editor, isReadOnly]);
 
   const getTextForAI = (): { text: string; selection: {from: number, to: number} | null } => {
     if (!editor) return { text: "", selection: null };
@@ -494,7 +517,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   };
 
   const handleAiEnhance = () => {
-    if (!editor) return;
+    if (!editor || isReadOnly) return;
     const { text, selection } = getTextForAI();
     if (!text.trim()) {
       toast({ title: "Nothing to enhance", description: "Please select text or type something.", variant: "destructive" });
@@ -507,7 +530,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   };
 
   const onApplyEnhancement = (improvedText: string) => {
-    if (!editor) return;
+    if (!editor || isReadOnly) return;
     if (originalSelectionRange) {
       editor.chain().focus().setTextSelection(originalSelectionRange).deleteSelection().insertContent(improvedText).run();
     } else {
@@ -519,7 +542,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   };
 
   const handleAutoFormat = async () => {
-    if (!editor) return;
+    if (!editor || isReadOnly) return;
     const { text, selection } = getTextForAI();
      if (!text.trim()) {
       toast({ title: "Nothing to format", description: "Please select text or ensure the document has content.", variant: "destructive" });
@@ -545,8 +568,8 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   };
 
   const handleSummarize = async () => {
-    if (!editor || !editor.getText().trim()) {
-       toast({ title: "Document is empty", description: "Cannot summarize an empty document.", variant: "destructive" });
+    if (!editor || !editor.getText().trim() || isReadOnly) {
+       toast({ title: "Document is empty or read-only", description: "Cannot summarize an empty or read-only document.", variant: "destructive" });
       return;
     }
     setIsAiLoading(true);
@@ -566,32 +589,32 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   };
 
   const handleOpenImageDialog = () => {
+    if (isReadOnly) return;
     setImageUrl("");
     setIsImageDialogOpen(true);
   };
 
   const handleInsertImageFromDialog = () => {
-    if (editor && imageUrl.trim()) {
+    if (editor && imageUrl.trim() && !isReadOnly) {
       editor.chain().focus().setImage({ src: imageUrl }).run();
     }
     setIsImageDialogOpen(false);
   };
 
   const handleAskAi = () => {
-    if (!editor) return;
+    if (!editor || isReadOnly) return;
     const { text, selection } = getTextForAI();
-    // If there's selected text, use it as the initial query. Otherwise, start with an empty query.
     setInitialQueryForAskAi(selection ? text : ""); 
-    setOriginalSelectionRange(selection); // Store selection to replace if user inserts
+    setOriginalSelectionRange(selection); 
     setActiveAiTool('askAi');
     setIsAskAiDialogOpen(true);
   };
 
   const handleInsertAskAiResponse = (responseText: string) => {
-    if (!editor) return;
-    if (originalSelectionRange) { // If there was an initial selection
+    if (!editor || isReadOnly) return;
+    if (originalSelectionRange) { 
       editor.chain().focus().setTextSelection(originalSelectionRange).deleteSelection().insertContent(responseText).run();
-    } else { // Otherwise, insert at current cursor
+    } else { 
       editor.chain().focus().insertContent(responseText).run();
     }
     toast({ title: "AI Response Inserted", description: "Text generated by AI has been added to the editor." });
@@ -599,13 +622,13 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   };
   
   const executeSlashCommand = (commandAction: (editor: Editor) => void) => {
-    if (!editor) return;
+    if (!editor || isReadOnly) return;
     commandAction(editor);
     setIsSlashCommandMenuOpen(false); 
   };
 
   const handleSlashCommandKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!isSlashCommandMenuOpen || slashCommands.length === 0) return;
+    if (!isSlashCommandMenuOpen || slashCommands.length === 0 || isReadOnly) return;
   
     let newIndex = focusedCommandIndex;
   
@@ -619,7 +642,7 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
       event.preventDefault();
       if (commandButtonRefs.current[focusedCommandIndex]) {
         commandButtonRefs.current[focusedCommandIndex]?.click();
-        setIsSlashCommandMenuOpen(false); // Close menu on enter
+        setIsSlashCommandMenuOpen(false); 
       }
       return; 
     } else if (event.key === "Escape") {
@@ -634,14 +657,13 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
   };
 
   useEffect(() => {
-    // For AI loading states, to remove the active class from the editor if dialog is closed without applying
     if (activeAiTool === 'aiEnhance' && !isEnhanceDialogOpen) {
         setActiveAiTool(null);
     }
     if (activeAiTool === 'aiSummarize' && !isSummaryDialogOpen) {
         setActiveAiTool(null);
     }
-    if (activeAiTool === 'askAi' && !isAskAiDialogOpen) { // Added for Ask AI
+    if (activeAiTool === 'askAi' && !isAskAiDialogOpen) { 
         setActiveAiTool(null);
     }
   }, [isEnhanceDialogOpen, isSummaryDialogOpen, isAskAiDialogOpen, activeAiTool]);
@@ -651,133 +673,140 @@ export function RichTextEditor({ value, onChange }: RichTextEditorProps) {
     <div ref={editorWrapperRef} className={cn(
         "relative flex flex-col items-center h-full rounded-lg border bg-card text-card-foreground shadow-sm"
     )}>
-      <Popover open={isSlashCommandMenuOpen} onOpenChange={setIsSlashCommandMenuOpen}>
-        <PopoverAnchor
-          style={{
-            position: 'absolute',
-            top: `${slashCommandAnchorPos?.top ?? 0}px`,
-            left: `${slashCommandAnchorPos?.left ?? 0}px`,
-            width: 0,
-            height: 0,
-          }}
-        />
-        <PopoverContent
-          className="w-60 p-1" 
-          sideOffset={5}
-          align="start"
-          onCloseAutoFocus={() => editor?.chain().focus().run()}
-        >
-          <div
-            ref={menuContentRef}
-            tabIndex={-1}
-            onKeyDown={handleSlashCommandKeyDown}
-            className="focus:outline-none"
-          >
-            {slashCommands.map((command, index) => (
-              <button
-                key={command.label} 
-                ref={(el) => (commandButtonRefs.current[index] = el)}
-                onClick={() => executeSlashCommand(command.action)}
-                className={cn(
-                  "flex items-center gap-2 w-full p-2 text-sm rounded-sm focus:outline-none",
-                  index === focusedCommandIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/80"
+      {!isReadOnly && (
+        <Popover open={isSlashCommandMenuOpen} onOpenChange={setIsSlashCommandMenuOpen}>
+            <PopoverAnchor
+            style={{
+                position: 'absolute',
+                top: `${slashCommandAnchorPos?.top ?? 0}px`,
+                left: `${slashCommandAnchorPos?.left ?? 0}px`,
+                width: 0,
+                height: 0,
+            }}
+            />
+            <PopoverContent
+            className="w-60 p-1" 
+            sideOffset={5}
+            align="start"
+            onCloseAutoFocus={() => editor?.chain().focus().run()}
+            >
+            <div
+                ref={menuContentRef}
+                tabIndex={-1}
+                onKeyDown={handleSlashCommandKeyDown}
+                className="focus:outline-none"
+            >
+                {slashCommands.map((command, index) => (
+                <button
+                    key={command.label} 
+                    ref={(el) => (commandButtonRefs.current[index] = el)}
+                    onClick={() => executeSlashCommand(command.action)}
+                    className={cn(
+                    "flex items-center gap-2 w-full p-2 text-sm rounded-sm focus:outline-none",
+                    index === focusedCommandIndex ? "bg-accent text-accent-foreground" : "hover:bg-accent/80"
+                    )}
+                    tabIndex={-1} 
+                >
+                    <command.icon className="h-4 w-4" />
+                    <span>{command.label}</span>
+                </button>
+                ))}
+                {slashCommands.length === 0 && (
+                <div className="p-2 text-sm text-muted-foreground">No commands available</div>
                 )}
-                tabIndex={-1} 
-              >
-                <command.icon className="h-4 w-4" />
-                <span>{command.label}</span>
-              </button>
-            ))}
-            {slashCommands.length === 0 && (
-              <div className="p-2 text-sm text-muted-foreground">No commands available</div>
-            )}
-          </div>
-        </PopoverContent>
-      </Popover>
+            </div>
+            </PopoverContent>
+        </Popover>
+      )}
       
       <TipTapToolbar
         editor={editor}
         onAiEnhance={handleAiEnhance}
         onAutoFormat={handleAutoFormat}
         onSummarize={handleSummarize}
-        onAskAi={handleAskAi} // Passed handler
+        onAskAi={handleAskAi} 
         onInsertImage={handleOpenImageDialog}
         isAiLoading={isAiLoading}
         activeAiTool={activeAiTool}
+        isReadOnly={isReadOnly}
       />
       <EditorContent editor={editor} className="flex-grow h-full overflow-y-auto w-full" />
 
-      <AITextEnhancementDialog
-        isOpen={isEnhanceDialogOpen}
-        onOpenChange={(isOpen) => {
-            setIsEnhanceDialogOpen(isOpen);
-            if (!isOpen && activeAiTool === 'aiEnhance') setActiveAiTool(null);
-        }}
-        initialText={textForEnhancement}
-        onApply={onApplyEnhancement}
-      />
-
-      <AskAiDialog
-        isOpen={isAskAiDialogOpen}
-        onOpenChange={(isOpen) => {
-            setIsAskAiDialogOpen(isOpen);
-            if (!isOpen && activeAiTool === 'askAi') setActiveAiTool(null);
-        }}
-        initialQuery={initialQueryForAskAi}
-        onInsertResponse={handleInsertAskAiResponse}
-      />
-
-      <Dialog open={isSummaryDialogOpen} onOpenChange={(isOpen) => {
-        setIsSummaryDialogOpen(isOpen);
-        if (!isOpen && activeAiTool === 'aiSummarize') setActiveAiTool(null);
-      }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Document Summary</DialogTitle>
-            <DialogDescription>
-              AI-generated summary of your document.
-            </DialogDescription>
-          </DialogHeader>
-          <ScrollArea className="max-h-[400px] my-4">
-            <Textarea
-                value={summaryContent}
-                readOnly
-                rows={10}
-                className="bg-muted/50 text-sm p-3"
+      {!isReadOnly && (
+        <>
+            <AITextEnhancementDialog
+                isOpen={isEnhanceDialogOpen}
+                onOpenChange={(isOpen) => {
+                    setIsEnhanceDialogOpen(isOpen);
+                    if (!isOpen && activeAiTool === 'aiEnhance') setActiveAiTool(null);
+                }}
+                initialText={textForEnhancement}
+                onApply={onApplyEnhancement}
             />
-          </ScrollArea>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => {
-                setIsSummaryDialogOpen(false);
-                if (activeAiTool === 'aiSummarize') setActiveAiTool(null);
-            }}>Close</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
-      <Dialog open={isImageDialogOpen} onOpenChange={setIsImageDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Insert Image</DialogTitle>
-            <DialogDescription>
-              Enter the URL of the image you want to insert.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <Label htmlFor="imageUrl">Image URL</Label>
-            <Input
-              id="imageUrl"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              placeholder="https://example.com/image.png"
+            <AskAiDialog
+                isOpen={isAskAiDialogOpen}
+                onOpenChange={(isOpen) => {
+                    setIsAskAiDialogOpen(isOpen);
+                    if (!isOpen && activeAiTool === 'askAi') setActiveAiTool(null);
+                }}
+                initialQuery={initialQueryForAskAi}
+                onInsertResponse={handleInsertAskAiResponse}
             />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsImageDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleInsertImageFromDialog} disabled={!imageUrl.trim()}>Insert Image</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+
+            <Dialog open={isSummaryDialogOpen} onOpenChange={(isOpen) => {
+                setIsSummaryDialogOpen(isOpen);
+                if (!isOpen && activeAiTool === 'aiSummarize') setActiveAiTool(null);
+            }}>
+                <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Document Summary</DialogTitle>
+                    <DialogDescription>
+                    AI-generated summary of your document.
+                    </DialogDescription>
+                </DialogHeader>
+                <ScrollArea className="max-h-[400px] my-4">
+                    <Textarea
+                        value={summaryContent}
+                        readOnly
+                        rows={10}
+                        className="bg-muted/50 text-sm p-3"
+                    />
+                </ScrollArea>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => {
+                        setIsSummaryDialogOpen(false);
+                        if (activeAiTool === 'aiSummarize') setActiveAiTool(null);
+                    }}>Close</Button>
+                </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isImageDialogOpen} onOpenChange={setIsImageDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                    <DialogTitle>Insert Image</DialogTitle>
+                    <DialogDescription>
+                    Enter the URL of the image you want to insert.
+                    </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                    <Label htmlFor="imageUrl">Image URL</Label>
+                    <Input
+                    id="imageUrl"
+                    value={imageUrl}
+                    onChange={(e) => setImageUrl(e.target.value)}
+                    placeholder="https://example.com/image.png"
+                    />
+                </div>
+                <DialogFooter>
+                    <Button variant="outline" onClick={() => setIsImageDialogOpen(false)}>Cancel</Button>
+                    <Button onClick={handleInsertImageFromDialog} disabled={!imageUrl.trim()}>Insert Image</Button>
+                </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        </>
+      )}
     </div>
   );
 }
