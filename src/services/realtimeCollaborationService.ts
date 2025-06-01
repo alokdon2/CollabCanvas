@@ -15,7 +15,7 @@ import {
   query, 
   orderBy,
   Timestamp,
-  DocumentReference // Added DocumentReference import
+  DocumentReference
 } from 'firebase/firestore';
 
 const PROJECTS_COLLECTION = 'projects';
@@ -100,14 +100,14 @@ const convertTimestamps = (data: any): any => {
 
 // Helper to sanitize data for Firestore (e.g., convert Maps to Objects, remove undefined, handle DocumentReferences)
 const sanitizeDataForFirestore = (data: any): any => {
-  if (data === undefined) {
-    return undefined; // Omit keys with undefined values
-  }
-  // Check for DocumentReference BEFORE other object/array checks to prevent it from being processed as a generic object
   if (data instanceof DocumentReference) {
     console.warn("[FirestoreService] Found DocumentReference in data to be saved. Removing it to prevent error. Path:", data.path);
-    return undefined; // Remove the field by returning undefined. Or consider `return data.path;` to store path as string.
+    return undefined; 
   }
+  if (data === undefined) {
+    return undefined; 
+  }
+
 
   if (data === null || typeof data !== 'object' || data instanceof Timestamp || data instanceof Date) {
     return data;
@@ -118,14 +118,13 @@ const sanitizeDataForFirestore = (data: any): any => {
     for (const [key, value] of data.entries()) {
       const sanitizedValue = sanitizeDataForFirestore(value);
       if (sanitizedValue !== undefined) {
-        obj[String(key)] = sanitizedValue; // Ensure key is string
+        obj[String(key)] = sanitizedValue; 
       }
     }
-    // Handle Excalidraw's collaborators Map specifically if it was converted to an object
+    
     if (obj.hasOwnProperty('collaborators') && typeof obj.collaborators === 'object' && !(obj.collaborators instanceof Map) && obj.collaborators !== null) {
         console.log("[FirestoreService] Sanitizing collaborators object (was Map) before save.");
-        // It's already an object here due to Map conversion, ensure its values are sanitized
-        // No specific action needed here for collaborators IF it was already converted to object by Map processing
+        
     }
     return obj;
   }
@@ -134,15 +133,15 @@ const sanitizeDataForFirestore = (data: any): any => {
     return data.map(item => sanitizeDataForFirestore(item)).filter(item => item !== undefined);
   }
 
-  // Generic object processing
+  
   const sanitizedObject: { [key: string]: any } = {};
   for (const key in data) {
     if (Object.prototype.hasOwnProperty.call(data, key)) {
       const value = data[key];
-      // Handle Excalidraw's appState.collaborators which is a Map
+      
       if (key === 'collaborators' && value instanceof Map) {
           console.log("[FirestoreService] Converting collaborators Map to object for save.");
-          sanitizedObject[key] = sanitizeDataForFirestore(Object.fromEntries(value)); // Convert Map to object and sanitize its content
+          sanitizedObject[key] = sanitizeDataForFirestore(Object.fromEntries(value)); 
       } else {
           const sanitizedValue = sanitizeDataForFirestore(value);
           if (sanitizedValue !== undefined) {
@@ -191,12 +190,12 @@ export async function saveProjectData(project: Project): Promise<void> {
 
     projectToSave = transformProjectPoints(projectToSave, transformExcalidrawPointsForSave);
     
-    // Sanitize the entire project object for Firestore compatibility
+    
     const finalProjectToSaveRaw = sanitizeDataForFirestore(projectToSave);
     
     const finalProjectToSave = {
-        ...finalProjectToSaveRaw, // Spread the sanitized data
-        updatedAt: new Date().toISOString(), // Ensure updatedAt is always set/overwritten
+        ...finalProjectToSaveRaw, 
+        updatedAt: new Date().toISOString(), 
     };
     
     const projectDocRef = doc(db, PROJECTS_COLLECTION, project.id);
@@ -291,6 +290,7 @@ export async function getAllProjectsFromFirestore(): Promise<Project[]> {
   }
 }
 
+// newProjectData can now include ownerId if the Project type supports it.
 export async function createProjectInFirestore(newProjectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>): Promise<Project> {
   console.log('[FirestoreService] Creating new project in Firestore:', newProjectData.name);
   try {
@@ -298,7 +298,7 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
     const now = new Date().toISOString();
     
     let projectToCreate: Project = {
-      ...newProjectData,
+      ...newProjectData, // This will include ownerId if present in newProjectData
       id: newProjectId,
       createdAt: now,
       updatedAt: now,
@@ -315,8 +315,8 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
         
     const finalProjectToCreateRaw = sanitizeDataForFirestore(projectToCreate);
     const finalProjectToCreate = {
-      ...finalProjectToCreateRaw, // Spread the sanitized data
-      createdAt: now, // Ensure timestamps are part of the sanitized object
+      ...finalProjectToCreateRaw, 
+      createdAt: now, 
       updatedAt: now,
     };
     

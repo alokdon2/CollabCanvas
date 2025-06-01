@@ -64,6 +64,7 @@ export interface FileSystemNode {
 export interface Project {
   id: string;
   name: string;
+  ownerId?: string; // Added ownerId field
   // Root level content for when no file or folder is selected (or for project overview)
   textContent: string;
   whiteboardContent: WhiteboardData | null;
