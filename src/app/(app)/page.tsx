@@ -7,13 +7,14 @@ import { ProjectCard } from "@/components/ProjectCard";
 import type { Project, FileSystemNode, WhiteboardData } from "@/lib/types";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
-import { Search, LayoutDashboard, FolderOpen, Loader2 } from "lucide-react";
+import { Search, LayoutDashboard, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { 
   getAllProjectsFromFirestore, 
   createProjectInFirestore, 
   deleteProjectFromFirestore 
-} from "@/services/realtimeCollaborationService"; // Updated service imports
+} from "@/services/realtimeCollaborationService"; 
+import { useAuth } from "@/contexts/AuthContext"; // Import useAuth
 
 const DEFAULT_EMPTY_TEXT_CONTENT = "<p></p>";
 const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = {
@@ -39,14 +40,22 @@ export default function DashboardPage() {
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { toast } = useToast();
+  const { user, loading: authLoading } = useAuth(); // Get user from useAuth
 
   useEffect(() => {
     setMounted(true);
+    // Only load projects if auth is not loading and user is available (or if your rules allow unauth reads)
+    if (authLoading) {
+      setIsLoading(true); // Keep loading if auth is pending
+      return;
+    }
+
     async function loadProjects() {
       setIsLoading(true);
       try {
+        // TODO: Adjust getAllProjectsFromFirestore if it needs to be user-specific
+        // For now, assuming it fetches projects based on security rules (e.g., public or user-owned)
         const firestoreProjects = await getAllProjectsFromFirestore();
-        // Ensure content defaults are applied when loading from Firestore
         const projectsWithFinalContentDefaults = firestoreProjects.map(p => ({
           ...p,
           textContent: p.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
@@ -66,28 +75,39 @@ export default function DashboardPage() {
     } else {
         setIsLoading(false); 
     }
-  }, [toast]);
+  }, [toast, authLoading]); // Depend on authLoading
 
-  const handleCreateProject = useCallback(async (newProjectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'fileSystemRoots'>) => {
-    // Augment with default content fields before sending to Firestore service
-    const augmentedData = {
+  const handleCreateProject = useCallback(async (newProjectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'fileSystemRoots' | 'ownerId'>) => {
+    if (!user) {
+      toast({ title: "Authentication Required", description: "You must be logged in to create a project.", variant: "destructive" });
+      return;
+    }
+
+    const projectDataWithOwner: Omit<Project, 'id' | 'createdAt' | 'updatedAt'> = {
       ...newProjectData,
+      ownerId: user.uid, // Add ownerId from the authenticated user
       fileSystemRoots: ensureNodeContentDefaults(newProjectData.fileSystemRoots || []),
       textContent: newProjectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
       whiteboardContent: newProjectData.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA},
     };
+
     try {
-      const newProject = await createProjectInFirestore(augmentedData);
-      setProjects((prevProjects) => [newProject, ...prevProjects]); // Add to start of list for immediate visibility
+      const newProject = await createProjectInFirestore(projectDataWithOwner);
+      setProjects((prevProjects) => [newProject, ...prevProjects]); 
       toast({ title: "Project Created", description: `"${newProject.name}" has been created.`});
     } catch (error) {
       console.error("Failed to create project in Firestore", error);
       toast({ title: "Error Creating Project", description: "Could not create project.", variant: "destructive" });
     }
-  }, [toast]);
+  }, [toast, user]);
 
   const handleDeleteProject = useCallback(async (projectId: string) => {
     const projectToDelete = projects.find(p => p.id === projectId);
+    // Add check if user is owner before deleting, based on your security rules
+    if (user && projectToDelete?.ownerId !== user.uid) {
+         toast({ title: "Permission Denied", description: "You are not the owner of this project.", variant: "destructive" });
+         return;
+    }
     try {
       await deleteProjectFromFirestore(projectId);
       setProjects((prevProjects) => prevProjects.filter((p) => p.id !== projectId));
@@ -96,7 +116,7 @@ export default function DashboardPage() {
       console.error("Failed to delete project from Firestore", error);
       toast({ title: "Error Deleting Project", description: "Could not delete project.", variant: "destructive" });
     }
-  }, [projects, toast]);
+  }, [projects, toast, user]);
 
   const handleShareProject = (project: Project) => {
     setProjectToShare(project);
@@ -105,9 +125,11 @@ export default function DashboardPage() {
 
   const filteredProjects = projects.filter(project =>
     project.name.toLowerCase().includes(searchTerm.toLowerCase())
+    // Optionally, filter by ownerId if you only want to show user's projects:
+    // && (!user || project.ownerId === user.uid) 
   );
 
-  if (!mounted || isLoading) {
+  if (!mounted || isLoading || authLoading) { // Include authLoading in this check
     return (
       <div className="container mx-auto p-4 sm:p-6 lg:p-8">
         <div className="flex justify-between items-center mb-6">
@@ -115,7 +137,7 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center justify-center py-10">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="ml-2">Loading projects from cloud...</p>
+          <p className="ml-2">{authLoading ? "Authenticating..." : "Loading projects from cloud..."}</p>
         </div>
       </div>
     );
@@ -136,13 +158,12 @@ export default function DashboardPage() {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <CreateProjectDialog onCreateProject={(newProjectData) => handleCreateProject(newProjectData as Omit<Project, 'id' | 'createdAt' | 'updatedAt'>)} />
+          <CreateProjectDialog onCreateProject={(newProjectData) => handleCreateProject(newProjectData as Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>)} />
         </div>
       </div>
 
       {filteredProjects.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {/* Projects are already sorted by 'updatedAt' (desc) from Firestore query */}
           {filteredProjects.map((project) => (
             <ProjectCard
               key={project.id}
@@ -162,7 +183,7 @@ export default function DashboardPage() {
           </p>
            {!searchTerm && (
             <div className="mt-4">
-              <CreateProjectDialog onCreateProject={(newProjectData) => handleCreateProject(newProjectData as Omit<Project, 'id' | 'createdAt' | 'updatedAt'>)} />
+              <CreateProjectDialog onCreateProject={(newProjectData) => handleCreateProject(newProjectData as Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>)} />
             </div>
            )}
         </div>

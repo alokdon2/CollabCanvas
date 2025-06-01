@@ -5,7 +5,8 @@ import './globals.css';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import { Toaster } from "@/components/ui/toaster";
 import { siteConfig } from '@/config/site';
-import { ProjectProvider } from '@/contexts/ProjectContext'; // Added
+import { ProjectProvider } from '@/contexts/ProjectContext';
+import { AuthProvider } from '@/contexts/AuthContext'; // Added AuthProvider
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -24,7 +25,7 @@ export const metadata: Metadata = {
   },
   description: siteConfig.description,
   icons: {
-    icon: "/favicon.ico", // Placeholder, not generating actual favicon
+    icon: "/favicon.ico", 
   },
 };
 
@@ -36,15 +37,17 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`} suppressHydrationWarning>
-        <ProjectProvider> {/* Added ProjectProvider Wrapper */}
-          <ThemeProvider
-            defaultTheme="system"
-            storageKey="collabcanvas-theme"
-          >
-            {children}
-            <Toaster />
-          </ThemeProvider>
-        </ProjectProvider>
+        <AuthProvider> {/* Added AuthProvider Wrapper */}
+          <ProjectProvider> 
+            <ThemeProvider
+              defaultTheme="system"
+              storageKey="collabcanvas-theme"
+            >
+              {children}
+              <Toaster />
+            </ThemeProvider>
+          </ProjectProvider>
+        </AuthProvider>
       </body>
     </html>
   );

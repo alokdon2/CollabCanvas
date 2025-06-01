@@ -2,7 +2,7 @@
 // src/lib/firebase.ts
 import { initializeApp, getApp, getApps, type FirebaseApp } from 'firebase/app';
 import { getFirestore, type Firestore } from 'firebase/firestore';
-// import { getAuth } from 'firebase/auth'; // Add if you implement Firebase Auth
+import { getAuth, type Auth } from 'firebase/auth'; // Added Auth import
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -15,7 +15,7 @@ const firebaseConfig = {
 
 let app: FirebaseApp;
 let db: Firestore;
-// let auth: Auth; // Add if you implement Firebase Auth
+let auth: Auth; // Declared auth
 
 if (getApps().length) {
   app = getApp();
@@ -24,6 +24,6 @@ if (getApps().length) {
 }
 
 db = getFirestore(app);
-// auth = getAuth(app); // Add if you implement Firebase Auth
+auth = getAuth(app); // Initialized auth
 
-export { db /*, auth */ };
+export { db, auth }; // Exported auth
