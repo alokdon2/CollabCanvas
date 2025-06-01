@@ -21,13 +21,12 @@ export function Navbar({ currentProjectName }: NavbarProps) {
             <span className="font-medium text-foreground truncate max-w-[150px] sm:max-w-xs">{currentProjectName}</span>
           </>
         )}
-        <div className="flex flex-1 items-center justify-end space-x-4">
-          <nav className="flex items-center space-x-2">
-            <ThemeSwitcher />
-            <UserProfileDropdown />
-          </nav>
+        <div className="flex flex-1 items-center justify-end space-x-2"> {/* Changed space-x-4 to space-x-2 and removed nested nav */}
+          <ThemeSwitcher />
+          <UserProfileDropdown />
         </div>
       </div>
     </header>
   );
 }
+
