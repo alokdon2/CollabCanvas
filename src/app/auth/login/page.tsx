@@ -15,6 +15,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
+import { useEffect } from 'react'; // Added this line
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
