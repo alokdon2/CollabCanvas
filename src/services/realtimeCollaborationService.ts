@@ -4,18 +4,19 @@
  */
 import { db } from '@/lib/firebase';
 import type { Project, FileSystemNode, WhiteboardData, ExcalidrawAppState, ExcalidrawElement } from '@/lib/types';
-import { 
-  doc, 
-  getDoc, 
-  setDoc, 
-  onSnapshot, 
-  collection, 
-  getDocs, 
-  deleteDoc, 
-  query, 
+import {
+  doc,
+  getDoc,
+  setDoc,
+  onSnapshot,
+  collection,
+  getDocs,
+  deleteDoc,
+  query,
   orderBy,
   Timestamp,
-  DocumentReference
+  DocumentReference,
+  where // Added where
 } from 'firebase/firestore';
 
 const PROJECTS_COLLECTION = 'projects';
@@ -30,7 +31,7 @@ const transformExcalidrawPointsForSave = (elements: readonly ExcalidrawElement[]
         return {
           ...el,
           points: el.points.map(p => ({ x: (p as [number,number])[0], y: (p as [number,number])[1] })),
-        } as ExcalidrawElement; 
+        } as ExcalidrawElement;
       }
     }
     return el;
@@ -46,7 +47,7 @@ const transformExcalidrawPointsOnLoad = (elements: readonly ExcalidrawElement[] 
         return {
           ...el,
           points: el.points.map(p => [(p as {x:number,y:number}).x, (p as {x:number,y:number}).y]),
-        } as ExcalidrawElement; 
+        } as ExcalidrawElement;
       }
     }
     return el;
@@ -102,10 +103,10 @@ const convertTimestamps = (data: any): any => {
 const sanitizeDataForFirestore = (data: any): any => {
   if (data instanceof DocumentReference) {
     console.warn("[FirestoreService] Found DocumentReference in data to be saved. Removing it to prevent error. Path:", data.path);
-    return undefined; 
+    return undefined;
   }
   if (data === undefined) {
-    return undefined; 
+    return undefined;
   }
 
 
@@ -118,13 +119,13 @@ const sanitizeDataForFirestore = (data: any): any => {
     for (const [key, value] of data.entries()) {
       const sanitizedValue = sanitizeDataForFirestore(value);
       if (sanitizedValue !== undefined) {
-        obj[String(key)] = sanitizedValue; 
+        obj[String(key)] = sanitizedValue;
       }
     }
-    
+
     if (obj.hasOwnProperty('collaborators') && typeof obj.collaborators === 'object' && !(obj.collaborators instanceof Map) && obj.collaborators !== null) {
         console.log("[FirestoreService] Sanitizing collaborators object (was Map) before save.");
-        
+
     }
     return obj;
   }
@@ -133,15 +134,15 @@ const sanitizeDataForFirestore = (data: any): any => {
     return data.map(item => sanitizeDataForFirestore(item)).filter(item => item !== undefined);
   }
 
-  
+
   const sanitizedObject: { [key: string]: any } = {};
   for (const key in data) {
     if (Object.prototype.hasOwnProperty.call(data, key)) {
       const value = data[key];
-      
+
       if (key === 'collaborators' && value instanceof Map) {
           console.log("[FirestoreService] Converting collaborators Map to object for save.");
-          sanitizedObject[key] = sanitizeDataForFirestore(Object.fromEntries(value)); 
+          sanitizedObject[key] = sanitizeDataForFirestore(Object.fromEntries(value));
       } else {
           const sanitizedValue = sanitizeDataForFirestore(value);
           if (sanitizedValue !== undefined) {
@@ -175,7 +176,7 @@ export async function loadProjectData(projectId: string): Promise<Project | null
     }
   } catch (error) {
     console.error(`[FirestoreService] Error loading project ${projectId}:`, error);
-    throw error; 
+    throw error;
   }
 }
 
@@ -186,20 +187,20 @@ export async function loadProjectData(projectId: string): Promise<Project | null
 export async function saveProjectData(project: Project): Promise<void> {
   console.log(`[FirestoreService] Saving project: ${project.id}`);
   try {
-    let projectToSave = JSON.parse(JSON.stringify(project)); 
+    let projectToSave = JSON.parse(JSON.stringify(project));
 
     projectToSave = transformProjectPoints(projectToSave, transformExcalidrawPointsForSave);
-    
-    
+
+
     const finalProjectToSaveRaw = sanitizeDataForFirestore(projectToSave);
-    
+
     const finalProjectToSave = {
-        ...finalProjectToSaveRaw, 
-        updatedAt: new Date().toISOString(), 
+        ...finalProjectToSaveRaw,
+        updatedAt: new Date().toISOString(),
     };
-    
+
     const projectDocRef = doc(db, PROJECTS_COLLECTION, project.id);
-    await setDoc(projectDocRef, finalProjectToSave, { merge: true }); 
+    await setDoc(projectDocRef, finalProjectToSave, { merge: true });
     console.log(`[FirestoreService] Project ${project.id} saved.`);
   } catch (error) {
     console.error(`[FirestoreService] Error saving project ${project.id}:`, error);
@@ -219,7 +220,7 @@ export async function subscribeToProjectUpdates(
 ): Promise<() => void> {
   console.log(`[FirestoreService] Subscribing to updates for project: ${projectId}`);
   const projectDocRef = doc(db, PROJECTS_COLLECTION, projectId);
-  
+
   const unsubscribe = onSnapshot(projectDocRef, (docSnap) => {
     if (docSnap.exists()) {
       console.log(`[FirestoreService] Real-time update received for project ${projectId}`);
@@ -233,7 +234,7 @@ export async function subscribeToProjectUpdates(
     console.error(`[FirestoreService] Error in real-time subscription for project ${projectId}:`, error);
   });
 
-  return unsubscribe; 
+  return unsubscribe;
 }
 
 
@@ -264,17 +265,22 @@ const ensureNodeContentDefaults = (nodes: FileSystemNode[]): FileSystemNode[] =>
   }));
 };
 
-export async function getAllProjectsFromFirestore(): Promise<Project[]> {
-  console.log('[FirestoreService] Fetching all projects for dashboard');
+export async function getAllProjectsFromFirestore(userId?: string): Promise<Project[]> {
+  if (!userId) {
+    console.log('[FirestoreService] No user ID provided, returning empty project list for dashboard.');
+    return [];
+  }
+  console.log(`[FirestoreService] Fetching projects for dashboard for user: ${userId}`);
   try {
     const projectsColRef = collection(db, PROJECTS_COLLECTION);
-    const q = query(projectsColRef, orderBy('updatedAt', 'desc'));
+    // Query for projects owned by the current user
+    const q = query(projectsColRef, where("ownerId", "==", userId), orderBy('updatedAt', 'desc'));
     const querySnapshot = await getDocs(q);
     let projects = querySnapshot.docs.map(docSnap => convertTimestamps(docSnap.data()) as Project);
     projects = projects.map(p => transformProjectPoints(p, transformExcalidrawPointsOnLoad));
-    
-    console.log(`[FirestoreService] Fetched ${projects.length} projects.`);
-    return projects.map(p => ({ 
+
+    console.log(`[FirestoreService] Fetched ${projects.length} projects for user ${userId}.`);
+    return projects.map(p => ({
       ...p,
       textContent: p.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
       whiteboardContent: p.whiteboardContent ? {
@@ -285,7 +291,7 @@ export async function getAllProjectsFromFirestore(): Promise<Project[]> {
       fileSystemRoots: ensureNodeContentDefaults(p.fileSystemRoots || [])
     }));
   } catch (error) {
-    console.error('[FirestoreService] Error fetching all projects:', error);
+    console.error(`[FirestoreService] Error fetching projects for user ${userId}:`, error);
     throw error;
   }
 }
@@ -296,7 +302,7 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
   try {
     const newProjectId = crypto.randomUUID();
     const now = new Date().toISOString();
-    
+
     let projectToCreate: Project = {
       ...newProjectData, // This will include ownerId if present in newProjectData
       id: newProjectId,
@@ -312,18 +318,18 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
     };
 
     projectToCreate = transformProjectPoints(projectToCreate, transformExcalidrawPointsForSave);
-        
+
     const finalProjectToCreateRaw = sanitizeDataForFirestore(projectToCreate);
     const finalProjectToCreate = {
-      ...finalProjectToCreateRaw, 
-      createdAt: now, 
+      ...finalProjectToCreateRaw,
+      createdAt: now,
       updatedAt: now,
     };
-    
+
     const projectDocRef = doc(db, PROJECTS_COLLECTION, newProjectId);
     await setDoc(projectDocRef, finalProjectToCreate);
     console.log(`[FirestoreService] Project "${finalProjectToCreate.name}" (ID: ${newProjectId}) created.`);
-    
+
     let returnProject = JSON.parse(JSON.stringify(finalProjectToCreate)) as Project;
     returnProject = transformProjectPoints(returnProject, transformExcalidrawPointsOnLoad);
     return returnProject;
@@ -344,5 +350,3 @@ export async function deleteProjectFromFirestore(projectId: string): Promise<voi
     throw error;
   }
 }
-
-    
