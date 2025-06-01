@@ -1,8 +1,9 @@
 
 /**
- * @fileOverview Service for real-time collaboration using Firebase Firestore.
+ * @fileOverview Service for collaboration using Firebase Firestore.
  * Project data (textContent, whiteboardContent, fileSystemRoots) is stored
  * as a JSON string in a 'projectDataBlob' field to handle complex nested structures.
+ * Real-time collaboration features (subscriptions) have been removed for simplification.
  */
 import { db } from '@/lib/firebase';
 import type { Project, FileSystemNode, WhiteboardData, ExcalidrawAppState, ExcalidrawElement } from '@/lib/types';
@@ -10,7 +11,6 @@ import {
   doc,
   getDoc,
   setDoc,
-  onSnapshot,
   collection,
   getDocs,
   deleteDoc,
@@ -31,14 +31,6 @@ const DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT: WhiteboardData = {
 
 // --- Data Transformation Helpers ---
 
-/**
- * Processes Excalidraw whiteboard data for saving to or loading from Firestore.
- * - Converts `points` array format.
- * - Converts `appState.collaborators` Map/Object.
- * @param whiteboardData The whiteboard data to process.
- * @param direction 'save' (to Firestore) or 'load' (from Firestore).
- * @returns Processed whiteboard data or null.
- */
 export const processSingleWhiteboardData = (
   whiteboardData: WhiteboardData | null | undefined,
   direction: 'save' | 'load'
@@ -69,9 +61,18 @@ export const processSingleWhiteboardData = (
       if (newAppState.collaborators instanceof Map) {
         const collaboratorsObject: { [key: string]: any } = {};
         newAppState.collaborators.forEach((value, key) => {
-          collaboratorsObject[String(key)] = value;
+          collaboratorsObject[String(key)] = sanitizeDataForFirestore(value); // Sanitize collaborator data
         });
         newAppState.collaborators = collaboratorsObject;
+      } else if (typeof newAppState.collaborators === 'object' && newAppState.collaborators !== null) {
+        // If already an object, sanitize its values
+        const sanitizedCollaborators: { [key: string]: any } = {};
+        for (const key in newAppState.collaborators as any) {
+            if (Object.prototype.hasOwnProperty.call(newAppState.collaborators, key)) {
+                sanitizedCollaborators[key] = sanitizeDataForFirestore((newAppState.collaborators as any)[key]);
+            }
+        }
+        newAppState.collaborators = sanitizedCollaborators;
       }
     }
   }
@@ -82,19 +83,11 @@ export const processSingleWhiteboardData = (
       if (el && el.hasOwnProperty('points') && Array.isArray(el.points)) {
         const newPoints = el.points.map((p: any) => {
           if (direction === 'save' && Array.isArray(p) && p.length === 2 && typeof p[0] === 'number' && typeof p[1] === 'number') {
-            // Check if already in {x,y} format to prevent re-processing
-            if (p.length === 2 && typeof p[0] === 'number' && typeof p[1] === 'number') {
-               return { x: p[0], y: p[1] }; // Convert [x,y] to {x,y} for save
-            }
-            return p; // Already in {x,y} or other format
+            return { x: p[0], y: p[1] };
           } else if (direction === 'load' && typeof p === 'object' && p !== null && 'x' in p && 'y' in p && typeof p.x === 'number' && typeof p.y === 'number') {
-             // Check if already in [x,y] format to prevent re-processing
-            if (typeof p.x === 'number' && typeof p.y === 'number') {
-              return [p.x, p.y]; // Convert {x,y} to [x,y] for load
-            }
-            return p; // Already in [x,y] or other format
+            return [p.x, p.y];
           }
-          return p;
+          return p; // Return as is if no transformation is needed or possible
         });
         return { ...el, points: newPoints };
       }
@@ -102,21 +95,13 @@ export const processSingleWhiteboardData = (
     });
   }
 
-
   return {
     elements: transformedElements,
-    appState: newAppState,
-    files: typeof whiteboardData.files === 'object' && whiteboardData.files !== null ? whiteboardData.files : {},
+    appState: sanitizeDataForFirestore(newAppState) as ExcalidrawAppState, // Sanitize appState
+    files: sanitizeDataForFirestore(whiteboardData.files || {}), // Sanitize files
   };
 };
 
-/**
- * Recursively processes FileSystemNode array for saving to or loading from Firestore.
- * Applies whiteboard data processing to each node.
- * @param nodes Array of FileSystemNode.
- * @param direction 'save' or 'load'.
- * @returns Processed array of FileSystemNode.
- */
 const processFileSystemRootsRecursive = (
   nodes: FileSystemNode[] | undefined,
   direction: 'save' | 'load'
@@ -149,7 +134,7 @@ export const convertTimestampsForClient = (data: any): any => {
 
 export const sanitizeDataForFirestore = (data: any): any => {
   if (data === undefined) {
-    return null; // Convert undefined to null for Firestore
+    return null; 
   }
   if (data === null || typeof data !== 'object' || data instanceof Date || data instanceof Timestamp) {
     return data;
@@ -157,8 +142,7 @@ export const sanitizeDataForFirestore = (data: any): any => {
   if (data instanceof Map) {
      const obj: { [key: string]: any } = {};
      data.forEach((value, key) => {
-       const sanitizedValue = sanitizeDataForFirestore(value);
-       obj[String(key)] = sanitizedValue; // Store null if value was undefined
+       obj[String(key)] = sanitizeDataForFirestore(value);
      });
      return obj;
   }
@@ -169,7 +153,7 @@ export const sanitizeDataForFirestore = (data: any): any => {
   for (const key in data) {
     if (Object.prototype.hasOwnProperty.call(data, key)) {
       const value = data[key];
-      sanitizedObject[key] = sanitizeDataForFirestore(value); // Store null if value was undefined
+      sanitizedObject[key] = sanitizeDataForFirestore(value);
     }
   }
   return sanitizedObject;
@@ -178,10 +162,10 @@ export const sanitizeDataForFirestore = (data: any): any => {
 interface ProjectDocument {
   id: string;
   name: string;
-  ownerId?: string | null; // ownerId can be null
+  ownerId?: string | null;
   createdAt: string;
   updatedAt: string;
-  projectDataBlob: string;
+  projectDataBlob: string; // JSON string
 }
 
 interface ProjectDataBlobContent {
@@ -200,7 +184,7 @@ export async function loadProjectData(projectId: string): Promise<Project | null
       const dbData = docSnap.data() as ProjectDocument;
       let projectCoreData: ProjectDataBlobContent;
 
-      if (dbData.projectDataBlob && typeof dbData.projectDataBlob === 'string') {
+      if (dbData.projectDataBlob && typeof dbData.projectDataBlob === 'string' && dbData.projectDataBlob.trim() !== "") {
         try {
           projectCoreData = JSON.parse(dbData.projectDataBlob);
         } catch (e) {
@@ -212,7 +196,7 @@ export async function loadProjectData(projectId: string): Promise<Project | null
           };
         }
       } else {
-        console.warn(`[FirestoreService Blob] projectDataBlob for project ${dbData.id} in loadProjectData is missing or not a string. Using default empty data. Blob was:`, dbData.projectDataBlob);
+        console.warn(`[FirestoreService Blob] projectDataBlob for project ${dbData.id} in loadProjectData is missing, not a string, or empty. Using default empty data. Blob was:`, dbData.projectDataBlob);
         projectCoreData = {
           textContent: DEFAULT_EMPTY_TEXT_CONTENT,
           whiteboardContent: { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
@@ -223,9 +207,9 @@ export async function loadProjectData(projectId: string): Promise<Project | null
       const project: Project = {
         id: dbData.id,
         name: dbData.name,
-        ownerId: dbData.ownerId || undefined, // Convert null to undefined for client consistency if needed
-        createdAt: dbData.createdAt,
-        updatedAt: dbData.updatedAt,
+        ownerId: dbData.ownerId || undefined,
+        createdAt: convertTimestampsForClient(dbData.createdAt), // Ensure timestamps are strings
+        updatedAt: convertTimestampsForClient(dbData.updatedAt), // Ensure timestamps are strings
         textContent: projectCoreData.textContent,
         whiteboardContent: processSingleWhiteboardData(projectCoreData.whiteboardContent, 'load'),
         fileSystemRoots: processFileSystemRootsRecursive(projectCoreData.fileSystemRoots, 'load'),
@@ -257,9 +241,9 @@ export async function saveProjectData(project: Project): Promise<void> {
       id: project.id,
       name: project.name,
       ownerId: project.ownerId || null,
-      createdAt: project.createdAt,
-      updatedAt: project.updatedAt,
-      projectDataBlob: JSON.stringify(sanitizedBlobContent || {}), // Ensure always stringify an object
+      createdAt: project.createdAt, // Should be string from client
+      updatedAt: project.updatedAt, // Should be string from client (new Date().toISOString())
+      projectDataBlob: JSON.stringify(sanitizedBlobContent || {}),
     };
 
     const projectDocRef = doc(db, PROJECTS_COLLECTION, project.id);
@@ -269,66 +253,6 @@ export async function saveProjectData(project: Project): Promise<void> {
     console.error(`[FirestoreService Blob] Error saving project ${project.id}:`, error);
     throw error;
   }
-}
-
-export async function subscribeToProjectUpdates(
-  projectId: string,
-  onUpdateCallback: (updatedProject: Project) => void
-): Promise<() => void> {
-  console.log(`[FirestoreService Blob] Subscribing to updates for project: ${projectId}`);
-  const projectDocRef = doc(db, PROJECTS_COLLECTION, projectId);
-
-  const unsubscribe = onSnapshot(projectDocRef, (docSnap) => {
-    if (docSnap.exists()) {
-      const dbData = docSnap.data() as ProjectDocument;
-      let projectCoreData: ProjectDataBlobContent;
-
-      if (dbData.projectDataBlob && typeof dbData.projectDataBlob === 'string') {
-        try {
-          projectCoreData = JSON.parse(dbData.projectDataBlob);
-        } catch (error) {
-          console.error(`[FirestoreService Blob] Error parsing projectDataBlob in subscription for ${dbData.id}:`, error, "Blob content:", dbData.projectDataBlob);
-          projectCoreData = {
-            textContent: DEFAULT_EMPTY_TEXT_CONTENT,
-            whiteboardContent: { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
-            fileSystemRoots: [],
-          };
-        }
-      } else {
-        console.warn(`[FirestoreService Blob] projectDataBlob for project ${dbData.id} in subscription is missing or not a string. Using default. Blob was:`, dbData.projectDataBlob);
-        projectCoreData = {
-          textContent: DEFAULT_EMPTY_TEXT_CONTENT,
-          whiteboardContent: { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
-          fileSystemRoots: [],
-        };
-      }
-
-      const updatedProject: Project = {
-        id: dbData.id,
-        name: dbData.name,
-        ownerId: dbData.ownerId || undefined,
-        createdAt: dbData.createdAt,
-        updatedAt: dbData.updatedAt,
-        textContent: projectCoreData.textContent,
-        whiteboardContent: processSingleWhiteboardData(projectCoreData.whiteboardContent, 'load'),
-        fileSystemRoots: processFileSystemRootsRecursive(projectCoreData.fileSystemRoots, 'load'),
-      };
-      console.log(`[FirestoreService Blob] Real-time update received for project ${projectId}`);
-      onUpdateCallback(updatedProject);
-
-    } else {
-      console.log(`[FirestoreService Blob] Real-time update: Project ${projectId} deleted or does not exist.`);
-    }
-  }, (error) => {
-    console.error(`[FirestoreService Blob] Error in real-time subscription for project ${projectId}:`, error);
-  });
-
-  return unsubscribe;
-}
-
-
-export async function unsubscribeFromAllProjectUpdates(projectId: string): Promise<void> {
-  console.log(`[FirestoreService Blob] UnsubscribeFromAllProjectUpdates called for ${projectId}. Individual listeners should be managed by their onSnapshot unsub function.`);
 }
 
 export const ensureNodeContentDefaults = (nodes: FileSystemNode[] | undefined): FileSystemNode[] => {
@@ -343,7 +267,7 @@ export const ensureNodeContentDefaults = (nodes: FileSystemNode[] | undefined): 
         appState: node.whiteboardContent.appState || { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT.appState } as ExcalidrawAppState,
         files: node.whiteboardContent.files || {},
     } : { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
-    children: node.children ? ensureNodeContentDefaults(node.children) : [],
+    children: node.children ? ensureNodeContentDefaults(node.children) : [], // Ensure children are also processed
   }));
 };
 
@@ -363,7 +287,7 @@ export async function getAllProjectsFromFirestore(userId?: string): Promise<Proj
       const dbData = docSnap.data() as ProjectDocument;
       let projectCoreData: ProjectDataBlobContent;
 
-      if (dbData.projectDataBlob && typeof dbData.projectDataBlob === 'string') {
+      if (dbData.projectDataBlob && typeof dbData.projectDataBlob === 'string' && dbData.projectDataBlob.trim() !== "") {
         try {
           projectCoreData = JSON.parse(dbData.projectDataBlob);
         } catch (error) {
@@ -375,7 +299,7 @@ export async function getAllProjectsFromFirestore(userId?: string): Promise<Proj
           };
         }
       } else {
-        console.warn(`[FirestoreService Blob] projectDataBlob for project ${dbData.id} in getAllProjects is missing or not a string. Using default. Blob was:`, dbData.projectDataBlob);
+        console.warn(`[FirestoreService Blob] projectDataBlob for project ${dbData.id} in getAllProjects is missing, not a string, or empty. Using default. Blob was:`, dbData.projectDataBlob);
         projectCoreData = {
           textContent: DEFAULT_EMPTY_TEXT_CONTENT,
           whiteboardContent: { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
@@ -387,8 +311,8 @@ export async function getAllProjectsFromFirestore(userId?: string): Promise<Proj
         id: dbData.id,
         name: dbData.name,
         ownerId: dbData.ownerId || undefined,
-        createdAt: dbData.createdAt,
-        updatedAt: dbData.updatedAt,
+        createdAt: convertTimestampsForClient(dbData.createdAt),
+        updatedAt: convertTimestampsForClient(dbData.updatedAt),
         textContent: projectCoreData.textContent,
         whiteboardContent: processSingleWhiteboardData(projectCoreData.whiteboardContent, 'load'),
         fileSystemRoots: processFileSystemRootsRecursive(projectCoreData.fileSystemRoots, 'load'),
@@ -414,7 +338,6 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
     const initialWhiteboardContentWithDefaults = newProjectData.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT };
     const initialTextContentWithDefaults = newProjectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT;
 
-
     const dataToBlob: ProjectDataBlobContent = {
       textContent: initialTextContentWithDefaults,
       whiteboardContent: processSingleWhiteboardData(initialWhiteboardContentWithDefaults, 'save'),
@@ -425,25 +348,26 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
     const projectDocForDb: ProjectDocument = {
       id: newProjectId,
       name: newProjectData.name || "Untitled Project",
-      ownerId: newProjectData.ownerId || null, // Ensure ownerId is null if undefined
+      ownerId: newProjectData.ownerId || null,
       createdAt: now,
       updatedAt: now,
-      projectDataBlob: JSON.stringify(sanitizedBlobContent || {}), // Ensure always stringify an object
+      projectDataBlob: JSON.stringify(sanitizedBlobContent || {}),
     };
 
     const projectDocRef = doc(db, PROJECTS_COLLECTION, newProjectId);
     await setDoc(projectDocRef, projectDocForDb);
     console.log(`[FirestoreService Blob] Project "${projectDocForDb.name}" (ID: ${newProjectId}) created.`);
 
+    // Construct the Project object to return, processing for client use
     const createdProject: Project = {
       id: projectDocForDb.id,
       name: projectDocForDb.name,
       ownerId: projectDocForDb.ownerId || undefined,
       createdAt: projectDocForDb.createdAt,
       updatedAt: projectDocForDb.updatedAt,
-      textContent: initialTextContentWithDefaults,
-      whiteboardContent: processSingleWhiteboardData(initialWhiteboardContentWithDefaults, 'load'),
-      fileSystemRoots: processFileSystemRootsRecursive(initialFileSystemRootsWithDefaults, 'load'),
+      textContent: initialTextContentWithDefaults, // Use the processed initial defaults
+      whiteboardContent: processSingleWhiteboardData(initialWhiteboardContentWithDefaults, 'load'), // Process for client
+      fileSystemRoots: processFileSystemRootsRecursive(initialFileSystemRootsWithDefaults, 'load'), // Process for client
     };
     return createdProject;
 
@@ -464,5 +388,4 @@ export async function deleteProjectFromFirestore(projectId: string): Promise<voi
     throw error;
   }
 }
-
     
