@@ -22,43 +22,85 @@ import {
 const PROJECTS_COLLECTION = 'projects';
 
 // --- Whiteboard Data Point Transformation Helpers ---
-// Renamed from processProjectWhiteboardData to be more generic for data objects
 export const processDataObjectWhiteboardContent = (dataObject: Project | FileSystemNode, direction: 'save' | 'load'): any => {
   const transformSingleWhiteboard = (whiteboardData: WhiteboardData | null | undefined): WhiteboardData | null => {
-    if (!whiteboardData || !whiteboardData.elements || !Array.isArray(whiteboardData.elements)) {
-      return whiteboardData || null;
+    if (!whiteboardData) {
+      return null;
     }
+
+    let newAppState = whiteboardData.appState
+      ? { ...whiteboardData.appState }
+      : ({ ZenModeEnabled: false, viewModeEnabled: false } as ExcalidrawAppState);
+
+    if (direction === 'load') {
+      if (newAppState && newAppState.hasOwnProperty('collaborators')) {
+        const collaboratorsData = newAppState.collaborators;
+        if (collaboratorsData && typeof collaboratorsData === 'object' && !(collaboratorsData instanceof Map)) {
+          const collaboratorsMap = new Map();
+          for (const key in collaboratorsData as any) {
+            if (Object.prototype.hasOwnProperty.call(collaboratorsData, key)) {
+              collaboratorsMap.set(key, (collaboratorsData as any)[key]);
+            }
+          }
+          newAppState.collaborators = collaboratorsMap;
+        } else if (collaboratorsData === null || collaboratorsData === undefined) {
+          newAppState.collaborators = new Map();
+        }
+      }
+    } else { // direction === 'save'
+      if (newAppState && newAppState.collaborators instanceof Map) {
+        const collaboratorsObject: { [key: string]: any } = {};
+        newAppState.collaborators.forEach((value, key) => {
+          // Assuming 'value' is already Firestore-compatible or will be handled by sanitizeDataForFirestore
+          collaboratorsObject[String(key)] = value;
+        });
+        newAppState.collaborators = collaboratorsObject;
+      }
+    }
+
+    const elementsToProcess = Array.isArray(whiteboardData.elements) ? whiteboardData.elements : [];
     try {
-      const transformedElements = whiteboardData.elements.map(el => {
+      const transformedElements = elementsToProcess.map(el => {
         if (!el.points || !Array.isArray(el.points)) {
           return el;
         }
-        const newElement = { ...el } as any;
+        const newElement = { ...el } as any; // Type assertion for modification
         if (direction === 'save') {
           const firstPoint = el.points[0];
+          // Check if points are already in {x, y} format (e.g. from a previous save attempt that failed before full processing)
+          if (typeof firstPoint === 'object' && firstPoint !== null && 'x' in firstPoint && 'y' in firstPoint) {
+             // Already in target format or malformed, return as is to avoid further processing
+            return el;
+          }
           if (Array.isArray(firstPoint) && firstPoint.length === 2 && typeof firstPoint[0] === 'number' && typeof firstPoint[1] === 'number') {
             newElement.points = (el.points as ReadonlyArray<readonly [number, number]>).map(p => ({ x: p[0], y: p[1] }));
           }
         } else { // direction === 'load'
           const firstPoint = el.points[0];
+           // Check if points are already in [number, number] format
+          if (Array.isArray(firstPoint) && firstPoint.length === 2 && typeof firstPoint[0] === 'number' && typeof firstPoint[1] === 'number') {
+            // Already in target format or malformed, return as is
+            return el;
+          }
           if (typeof firstPoint === 'object' && firstPoint !== null && 'x' in firstPoint && 'y' in firstPoint) {
             newElement.points = (el.points as Array<{x: number, y: number}>).map(p => [p.x, p.y]);
           }
         }
         return newElement as ExcalidrawElement;
       });
+
       return {
         ...whiteboardData,
         elements: transformedElements,
-        appState: whiteboardData.appState || { ZenModeEnabled: false, viewModeEnabled: false } as ExcalidrawAppState,
+        appState: newAppState,
         files: whiteboardData.files || {},
       };
     } catch (error) {
       console.error("Error transforming whiteboard data points:", error, "Data:", JSON.stringify(whiteboardData), "Direction:", direction);
       return {
         ...whiteboardData,
-        elements: [], // Fallback
-        appState: whiteboardData.appState || { ZenModeEnabled: false, viewModeEnabled: false } as ExcalidrawAppState,
+        elements: elementsToProcess, // Fallback to original elements on error
+        appState: newAppState,
         files: whiteboardData.files || {},
       };
     }
@@ -117,15 +159,8 @@ export const sanitizeDataForFirestore = (data: any): any => {
     return data;
   }
     
-  if (data.appState && data.appState.collaborators instanceof Map) {
-    const collaboratorsObject: { [key: string]: any } = {};
-    for (const [key, value] of data.appState.collaborators.entries()) {
-      collaboratorsObject[String(key)] = sanitizeDataForFirestore(value);
-    }
-    data.appState.collaborators = collaboratorsObject;
-  }
-
-
+  // processDataObjectWhiteboardContent (called before this) should handle appState.collaborators for 'save' direction.
+  // This general Map conversion is a fallback or for other Maps in the structure.
   if (data instanceof Map) {
     const obj: { [key: string]: any } = {};
     for (const [key, value] of data.entries()) {
@@ -274,7 +309,7 @@ export async function getAllProjectsFromFirestore(userId?: string): Promise<Proj
     const querySnapshot = await getDocs(q);
     let projects = querySnapshot.docs.map(docSnap => {
         let project = convertTimestamps(docSnap.data()) as Project;
-        project = processDataObjectWhiteboardContent(project, 'load') as Project;
+        project = processDataObjectWhiteboardContent(project, 'load') as Project; // Ensure collaborators are Maps
         return project;
     });
     
@@ -304,28 +339,34 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
       updatedAt: now,
       fileSystemRoots: ensureNodeContentDefaults(newProjectData.fileSystemRoots || []),
       textContent: newProjectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
-      whiteboardContent: newProjectData.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
+      whiteboardContent: newProjectData.whiteboardContent ? 
+        processDataObjectWhiteboardContent({ whiteboardContent: newProjectData.whiteboardContent } as any, 'save').whiteboardContent : // Process for save direction before setting
+        { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
     };
 
-    projectToCreate = processDataObjectWhiteboardContent(projectToCreate, 'save') as Project;
+    // Ensure the root whiteboardContent is also processed for 'save'
+    if (projectToCreate.whiteboardContent && projectToCreate.whiteboardContent.appState && projectToCreate.whiteboardContent.appState.collaborators instanceof Map) {
+        const tempProjectShell = { whiteboardContent: projectToCreate.whiteboardContent } as Project;
+        projectToCreate.whiteboardContent = processDataObjectWhiteboardContent(tempProjectShell, 'save').whiteboardContent;
+    }
 
-    const finalProjectToCreateRaw = sanitizeDataForFirestore(projectToCreate);
-    const finalProjectToCreate = { 
-      ...finalProjectToCreateRaw,
-      createdAt: now, // Ensure timestamps are strings
+
+    const finalProjectToSaveRaw = sanitizeDataForFirestore(projectToCreate);
+    const finalProjectToSave = { 
+      ...finalProjectToSaveRaw,
+      createdAt: now, 
       updatedAt: now,
     };
 
     const projectDocRef = doc(db, PROJECTS_COLLECTION, newProjectId);
-    await setDoc(projectDocRef, finalProjectToCreate);
-    console.log(`[FirestoreService] Project "${finalProjectToCreate.name}" (ID: ${newProjectId}) created.`);
+    await setDoc(projectDocRef, finalProjectToSave);
+    console.log(`[FirestoreService] Project "${finalProjectToSave.name}" (ID: ${newProjectId}) created.`);
 
-    // Return the client-ready version
-    let returnProject = JSON.parse(JSON.stringify(finalProjectToCreate)) as Project;
-    returnProject = processDataObjectWhiteboardContent(returnProject, 'load') as Project;
+    let returnProject = JSON.parse(JSON.stringify(finalProjectToSave)) as Project;
+    returnProject = processDataObjectWhiteboardContent(returnProject, 'load') as Project; // Process for 'load' to return client-ready data
     return {
         ...returnProject,
-        fileSystemRoots: ensureNodeContentDefaults(returnProject.fileSystemRoots || []) // Ensure defaults on return
+        fileSystemRoots: ensureNodeContentDefaults(returnProject.fileSystemRoots || []) 
     };
   } catch (error) {
     console.error('[FirestoreService] Error creating project:', error);
@@ -344,3 +385,6 @@ export async function deleteProjectFromFirestore(projectId: string): Promise<voi
     throw error;
   }
 }
+
+
+    
