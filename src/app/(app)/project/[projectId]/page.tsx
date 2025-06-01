@@ -238,7 +238,7 @@ function ProjectPageContent() {
     let effectiveReadOnly = currentIsShared;
 
     if (currentProject && authUser && projectRootTextContent !== DEFAULT_EMPTY_TEXT_CONTENT ) { // Ensure project is loaded to check ownerId
-        if (!currentIsShared && projectData.ownerId && authUser.uid !== projectData.ownerId) {
+        if (!currentIsShared && currentProject.ownerId && authUser.uid !== currentProject.ownerId) {
              effectiveReadOnly = true; // Force read-only if not owner and not explicitly shared
         }
     }
@@ -259,7 +259,7 @@ function ProjectPageContent() {
             variant: "default"
         });
     }
-  }, [searchParams, toast, mounted, isReadOnlyView, currentProject, authUser, isLoadingProject]);
+  }, [searchParams, toast, mounted, isReadOnlyView, currentProject, authUser, isLoadingProject, projectRootTextContent]);
 
 
   const updateLocalStateFromProject = useCallback((projectData: Project | null, source: "initialLoad" | "realtimeUpdate" = "initialLoad") => {
@@ -318,22 +318,22 @@ function ProjectPageContent() {
       if (!projectId) return;
       setIsLoadingProject(true);
       try {
-        const projectData = await realtimeLoadProjectData(projectId);
+        const projectDataFromFirestore = await realtimeLoadProjectData(projectId); // Renamed to avoid conflict
 
-        if (projectData) {
+        if (projectDataFromFirestore) {
           console.log(`[ProjectPage] Project ${projectId} loaded from Firestore.`);
           
           // Determine read-only status based on shared link and ownership
           const isSharedViaUrl = searchParams.get('shared') === 'true';
           let effectiveReadOnly = isSharedViaUrl;
-          if (!isSharedViaUrl && authUser && projectData.ownerId && authUser.uid !== projectData.ownerId) {
+          if (!isSharedViaUrl && authUser && projectDataFromFirestore.ownerId && authUser.uid !== projectDataFromFirestore.ownerId) {
             console.warn("[ProjectPage] User is not owner and not a shared link. Forcing read-only mode.");
             effectiveReadOnly = true;
           }
           setIsReadOnlyView(effectiveReadOnly); // Set read-only state before updating local state
 
-          updateLocalStateFromProject(projectData, "initialLoad");
-          lastSavedToServerTimestampRef.current = projectData.updatedAt;
+          updateLocalStateFromProject(projectDataFromFirestore, "initialLoad");
+          lastSavedToServerTimestampRef.current = projectDataFromFirestore.updatedAt;
 
 
           unsubscribeRealtime = await realtimeSubscribeToProjectUpdates(projectId, (updatedProject) => {
@@ -1039,3 +1039,4 @@ export default function ProjectPage() {
     </Suspense>
   )
 }
+
