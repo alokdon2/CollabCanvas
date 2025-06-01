@@ -382,8 +382,8 @@ function ProjectPageContent() {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [saveStatus, isReadOnlyView, mounted, isLoadingProject, currentProject, performSave]);
-
+  }, [performSave]);
+ // saveStatus, isReadOnlyView, mounted, isLoadingProject, currentProject, performSave
 
   // --- User Input Handlers (triggering saveStatus='idle') ---
   const handleTextChange = useCallback((newText: string) => {
