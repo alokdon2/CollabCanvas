@@ -2,6 +2,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Link from "next/link"; // Added Link import
 import { CreateProjectDialog } from "@/components/CreateProjectDialog";
 import { ProjectCard } from "@/components/ProjectCard";
 import type { Project, FileSystemNode, WhiteboardData } from "@/lib/types";
@@ -12,9 +13,10 @@ import { useToast } from "@/hooks/use-toast";
 import {
   getAllProjectsFromFirestore,
   createProjectInFirestore,
-  deleteProjectFromFirestore
-} from "@/services/realtimeCollaborationService";
-import { useAuth } from "@/contexts/AuthContext"; // Import useAuth
+  deleteProjectFromFirestore,
+  ensureNodeContentDefaults, // Import for ensuring defaults
+} from "@/services/realtimeCollaborationService"; // Switch to Firestore service
+import { useAuth } from "@/contexts/AuthContext";
 
 const DEFAULT_EMPTY_TEXT_CONTENT = "<p></p>";
 const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = {
@@ -23,14 +25,9 @@ const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = {
   files: {}
 };
 
-const ensureNodeContentDefaults = (nodes: FileSystemNode[]): FileSystemNode[] => {
-  return nodes.map(node => ({
-    ...node,
-    textContent: node.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
-    whiteboardContent: node.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
-    ...(node.children && { children: ensureNodeContentDefaults(node.children) }),
-  }));
-};
+// This function is now imported from realtimeCollaborationService
+// const ensureNodeContentDefaults = (nodes: FileSystemNode[]): FileSystemNode[] => { ... }
+
 
 export default function DashboardPage() {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -44,42 +41,37 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setMounted(true);
-    if (authLoading) {
+    // No need for window check for Firestore
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || authLoading) {
       setIsLoading(true);
       return;
     }
 
     async function loadProjects() {
-      if (!user) { // If no user, don't load projects for the dashboard
+      if (!user) {
         setProjects([]);
         setIsLoading(false);
         return;
       }
       setIsLoading(true);
       try {
-        const firestoreProjects = await getAllProjectsFromFirestore(user.uid); // Pass user.uid
-        const projectsWithFinalContentDefaults = firestoreProjects.map(p => ({
-          ...p,
-          textContent: p.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
-          whiteboardContent: p.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
-          fileSystemRoots: ensureNodeContentDefaults(p.fileSystemRoots || [])
-        }));
-        setProjects(projectsWithFinalContentDefaults);
+        // Use Firestore function
+        const firestoreProjects = await getAllProjectsFromFirestore(user.uid);
+        // ensureNodeContentDefaults is likely applied within getAllProjectsFromFirestore now or data is client-ready
+        setProjects(firestoreProjects);
       } catch (error) {
         console.error("Failed to load projects from Firestore for user", user.uid, error);
         toast({ title: "Error Loading Projects", description: `Could not load your projects: ${(error as Error).message}`, variant: "destructive" });
-        setProjects([]); // Clear projects on error
+        setProjects([]);
       } finally {
         setIsLoading(false);
       }
     }
-
-    if (typeof window !== 'undefined') {
-        loadProjects();
-    } else {
-        setIsLoading(false);
-    }
-  }, [toast, authLoading, user]);
+    loadProjects();
+  }, [mounted, toast, authLoading, user]);
 
   const handleCreateProject = useCallback(async (newProjectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'fileSystemRoots' | 'ownerId'>) => {
     if (!user) {
@@ -90,14 +82,16 @@ export default function DashboardPage() {
     const projectDataWithOwner: Omit<Project, 'id' | 'createdAt' | 'updatedAt'> = {
       ...newProjectData,
       ownerId: user.uid,
-      fileSystemRoots: ensureNodeContentDefaults(newProjectData.fileSystemRoots || []),
+      // Defaults are usually handled by createProjectInFirestore or ensureNodeContentDefaults
       textContent: newProjectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
       whiteboardContent: newProjectData.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA},
+      fileSystemRoots: newProjectData.fileSystemRoots ? ensureNodeContentDefaults(newProjectData.fileSystemRoots) : [],
     };
 
     try {
+      // Use Firestore function
       const newProject = await createProjectInFirestore(projectDataWithOwner);
-      setProjects((prevProjects) => [newProject, ...prevProjects]);
+      setProjects((prevProjects) => [newProject, ...prevProjects]); // Add to start for recency
       toast({ title: "Project Created", description: `"${newProject.name}" has been created.`});
     } catch (error) {
       console.error("Failed to create project in Firestore", error);
@@ -112,6 +106,7 @@ export default function DashboardPage() {
          return;
     }
     try {
+      // Use Firestore function
       await deleteProjectFromFirestore(projectId);
       setProjects((prevProjects) => prevProjects.filter((p) => p.id !== projectId));
       toast({ title: "Project Deleted", description: `"${projectToDelete?.name || 'Project'}" has been deleted.`});
@@ -178,14 +173,14 @@ export default function DashboardPage() {
         <div className="text-center py-10">
           <LayoutDashboard className="mx-auto h-12 w-12 text-muted-foreground" />
           <h3 className="mt-2 text-xl font-semibold">
-            {user ? "No projects found" : "Please sign in"}
+            {user ? (isLoading ? "Loading..." : "No projects found") : "Please sign in"}
           </h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {user ? (searchTerm ? "Try a different search term or " : "Get started by ") : "Sign in to see your projects or "}
-            {user && "creating a new project."}
+            {user && !isLoading && "creating a new project."}
             {!user && <Link href="/auth/login" className="text-primary hover:underline">create an account</Link>}
           </p>
-           {!searchTerm && user && (
+           {!searchTerm && user && !isLoading && (
             <div className="mt-4">
               <CreateProjectDialog onCreateProject={(newProjectData) => handleCreateProject(newProjectData as Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'ownerId'>)} />
             </div>
@@ -197,6 +192,7 @@ export default function DashboardPage() {
           project={projectToShare}
           isOpen={isShareDialogOpen}
           onOpenChange={setIsShareDialogOpen}
+          isLocal={false} // Indicate Firestore backend for ShareDialog text
         />
       )}
     </div>

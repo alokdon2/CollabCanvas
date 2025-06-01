@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -20,16 +21,18 @@ interface ShareProjectDialogProps {
   project: Project;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
+  isLocal?: boolean; // To adjust text based on backend
 }
 
-export function ShareProjectDialog({ project, isOpen, onOpenChange }: ShareProjectDialogProps) {
+export function ShareProjectDialog({ project, isOpen, onOpenChange, isLocal = false }: ShareProjectDialogProps) {
   const [shareableLink, setShareableLink] = useState("");
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     if (project && typeof window !== 'undefined') {
-      setShareableLink(`${window.location.origin}/project/${project.id}?shared=true`); // Mock link
+      // The ?shared=true parameter can be used by ProjectPage to enable a read-only view
+      setShareableLink(`${window.location.origin}/project/${project.id}?shared=true`);
     }
   }, [project]);
 
@@ -53,7 +56,11 @@ export function ShareProjectDialog({ project, isOpen, onOpenChange }: ShareProje
         <DialogHeader>
           <DialogTitle>Share "{project.name}"</DialogTitle>
           <DialogDescription>
-            Anyone with this link can view the project. Editing permissions are not yet implemented.
+            Anyone with this link can view the project.
+            {isLocal 
+              ? " Note: This project is stored locally in your browser. The link works for you to reopen it, but others won't see your local changes unless you export and share the data."
+              : " Editing permissions are not yet implemented for shared links via Firestore."
+            }
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
@@ -68,9 +75,11 @@ export function ShareProjectDialog({ project, isOpen, onOpenChange }: ShareProje
               {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Note: Real-time collaboration and permission settings require backend implementation.
-          </p>
+          {!isLocal && (
+            <p className="text-xs text-muted-foreground">
+              Real-time collaboration and detailed permission settings are features for future development.
+            </p>
+          )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
