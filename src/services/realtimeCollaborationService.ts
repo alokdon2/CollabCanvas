@@ -21,66 +21,77 @@ import {
 
 const PROJECTS_COLLECTION = 'projects';
 
-// --- Points Transformation Helpers ---
-const transformExcalidrawPointsForSave = (elements: readonly ExcalidrawElement[] | undefined): ExcalidrawElement[] => {
-  if (!elements) return [];
-  return elements.map(el => {
-    if (el && Array.isArray(el.points)) {
-      const firstPoint = el.points[0];
-      if (Array.isArray(firstPoint) && firstPoint.length === 2 && typeof firstPoint[0] === 'number' && typeof firstPoint[1] === 'number') {
-        return {
-          ...el,
-          points: el.points.map(p => ({ x: (p as [number,number])[0], y: (p as [number,number])[1] })),
-        } as ExcalidrawElement;
-      }
-    }
-    return el;
-  });
-};
+// --- Whiteboard Data Transformation Helpers (Stringification Approach) ---
 
-const transformExcalidrawPointsOnLoad = (elements: readonly ExcalidrawElement[] | undefined): ExcalidrawElement[] => {
-  if (!elements) return [];
-  return elements.map(el => {
-    if (el && Array.isArray(el.points)) {
-      const firstPoint = el.points[0];
-      if (typeof firstPoint === 'object' && firstPoint !== null && 'x' in firstPoint && 'y' in firstPoint) {
-        return {
-          ...el,
-          points: el.points.map(p => [(p as {x:number,y:number}).x, (p as {x:number,y:number}).y]),
-        } as ExcalidrawElement;
-      }
-    }
-    return el;
-  });
-};
-
-const transformWhiteboardDataPoints = (
-  whiteboardData: WhiteboardData | null | undefined,
-  transformer: (elements: readonly ExcalidrawElement[] | undefined) => ExcalidrawElement[]
-): WhiteboardData | null => {
+/**
+ * Converts WhiteboardData.elements to a JSON string for saving to Firestore.
+ * The rest of the WhiteboardData (appState, files) is returned as is.
+ */
+const convertWhiteboardElementsToString = (whiteboardData: WhiteboardData | null | undefined): any | null => {
   if (!whiteboardData) return null;
-  return {
-    ...whiteboardData,
-    elements: transformer(whiteboardData.elements),
-  };
+  // Create a shallow copy to avoid mutating the original object in state directly
+  const processedData = { ...whiteboardData };
+  if (processedData.elements && Array.isArray(processedData.elements)) {
+    (processedData as any).elementsString = JSON.stringify(processedData.elements);
+    delete (processedData as any).elements; // Remove the original elements array
+  }
+  return processedData;
 };
 
-const transformProjectPoints = (
-  project: Project,
-  transformer: (elements: readonly ExcalidrawElement[] | undefined) => ExcalidrawElement[]
-): Project => {
-  const transformNodes = (nodes: FileSystemNode[]): FileSystemNode[] => {
+/**
+ * Parses elementsString from Firestore data back into WhiteboardData.elements.
+ * Ensures appState exists.
+ */
+const parseWhiteboardElementsFromString = (firestoreData: any | null | undefined): WhiteboardData | null => {
+  if (!firestoreData) return null;
+  // Create a shallow copy
+  const rehydratedData = { ...firestoreData };
+  if (rehydratedData.elementsString && typeof rehydratedData.elementsString === 'string') {
+    try {
+      rehydratedData.elements = JSON.parse(rehydratedData.elementsString);
+    } catch (e) {
+      console.error("Failed to parse elementsString from Firestore:", e, rehydratedData.elementsString);
+      rehydratedData.elements = []; // Default to empty array on error
+    }
+    delete rehydratedData.elementsString;
+  } else if (!rehydratedData.elements) {
+    // If elementsString is not present and elements is also not present, ensure elements is an empty array.
+     rehydratedData.elements = [];
+  }
+
+  // Ensure appState is at least an empty object if not present
+  if (!rehydratedData.appState) {
+      rehydratedData.appState = {};
+  }
+  // Ensure files is at least an empty object if not present
+  if (!rehydratedData.files) {
+      rehydratedData.files = {};
+  }
+  return rehydratedData as WhiteboardData;
+};
+
+/**
+ * Processes whiteboard content within a project (root and file system nodes)
+ * for saving to or loading from Firestore.
+ * @param project The project data.
+ * @param direction 'save' to convert elements to string, 'load' to parse string to elements.
+ * @returns The processed project data.
+ */
+const processProjectWhiteboardData = (project: Project, direction: 'save' | 'load'): Project => {
+  const whiteboardProcessor = direction === 'save' ? convertWhiteboardElementsToString : parseWhiteboardElementsFromString;
+
+  const processNodes = (nodes: FileSystemNode[]): FileSystemNode[] => {
     return nodes.map(node => ({
       ...node,
-      whiteboardContent: transformWhiteboardDataPoints(node.whiteboardContent, transformer),
-      children: node.children ? transformNodes(node.children) : undefined,
+      whiteboardContent: whiteboardProcessor(node.whiteboardContent),
+      children: node.children ? processNodes(node.children) : undefined,
     }));
   };
 
   return {
     ...project,
-    whiteboardContent: transformWhiteboardDataPoints(project.whiteboardContent, transformer),
-    fileSystemRoots: transformNodes(project.fileSystemRoots || []),
+    whiteboardContent: whiteboardProcessor(project.whiteboardContent),
+    fileSystemRoots: processNodes(project.fileSystemRoots || []),
   };
 };
 
@@ -109,7 +120,6 @@ const sanitizeDataForFirestore = (data: any): any => {
     return undefined;
   }
 
-
   if (data === null || typeof data !== 'object' || data instanceof Timestamp || data instanceof Date) {
     return data;
   }
@@ -122,11 +132,6 @@ const sanitizeDataForFirestore = (data: any): any => {
         obj[String(key)] = sanitizedValue;
       }
     }
-
-    if (obj.hasOwnProperty('collaborators') && typeof obj.collaborators === 'object' && !(obj.collaborators instanceof Map) && obj.collaborators !== null) {
-        console.log("[FirestoreService] Sanitizing collaborators object (was Map) before save.");
-
-    }
     return obj;
   }
 
@@ -134,20 +139,13 @@ const sanitizeDataForFirestore = (data: any): any => {
     return data.map(item => sanitizeDataForFirestore(item)).filter(item => item !== undefined);
   }
 
-
   const sanitizedObject: { [key: string]: any } = {};
   for (const key in data) {
     if (Object.prototype.hasOwnProperty.call(data, key)) {
       const value = data[key];
-
-      if (key === 'collaborators' && value instanceof Map) {
-          console.log("[FirestoreService] Converting collaborators Map to object for save.");
-          sanitizedObject[key] = sanitizeDataForFirestore(Object.fromEntries(value));
-      } else {
-          const sanitizedValue = sanitizeDataForFirestore(value);
-          if (sanitizedValue !== undefined) {
-            sanitizedObject[key] = sanitizedValue;
-          }
+      const sanitizedValue = sanitizeDataForFirestore(value);
+      if (sanitizedValue !== undefined) {
+        sanitizedObject[key] = sanitizedValue;
       }
     }
   }
@@ -168,7 +166,7 @@ export async function loadProjectData(projectId: string): Promise<Project | null
     if (docSnap.exists()) {
       console.log(`[FirestoreService] Project ${projectId} loaded.`);
       let projectData = convertTimestamps(docSnap.data()) as Project;
-      projectData = transformProjectPoints(projectData, transformExcalidrawPointsOnLoad);
+      projectData = processProjectWhiteboardData(projectData, 'load');
       return projectData;
     } else {
       console.log(`[FirestoreService] Project ${projectId} not found.`);
@@ -187,16 +185,16 @@ export async function loadProjectData(projectId: string): Promise<Project | null
 export async function saveProjectData(project: Project): Promise<void> {
   console.log(`[FirestoreService] Saving project: ${project.id}`);
   try {
-    let projectToSave = JSON.parse(JSON.stringify(project));
+    // Deep clone to avoid mutating original state object before processing
+    let projectToProcess = JSON.parse(JSON.stringify(project));
 
-    projectToSave = transformProjectPoints(projectToSave, transformExcalidrawPointsForSave);
+    projectToProcess = processProjectWhiteboardData(projectToProcess, 'save');
 
-
-    const finalProjectToSaveRaw = sanitizeDataForFirestore(projectToSave);
+    const finalProjectToSaveRaw = sanitizeDataForFirestore(projectToProcess);
 
     const finalProjectToSave = {
         ...finalProjectToSaveRaw,
-        updatedAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(), // Ensure updatedAt is always fresh
     };
 
     const projectDocRef = doc(db, PROJECTS_COLLECTION, project.id);
@@ -225,7 +223,7 @@ export async function subscribeToProjectUpdates(
     if (docSnap.exists()) {
       console.log(`[FirestoreService] Real-time update received for project ${projectId}`);
       let updatedProject = convertTimestamps(docSnap.data()) as Project;
-      updatedProject = transformProjectPoints(updatedProject, transformExcalidrawPointsOnLoad);
+      updatedProject = processProjectWhiteboardData(updatedProject, 'load');
       onUpdateCallback(updatedProject);
     } else {
       console.log(`[FirestoreService] Real-time update: Project ${projectId} deleted or does not exist.`);
@@ -246,7 +244,7 @@ export async function unsubscribeFromAllProjectUpdates(projectId: string): Promi
 // --- Functions for Dashboard Page ---
 
 const DEFAULT_EMPTY_TEXT_CONTENT = "<p></p>";
-const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = {
+const DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT: WhiteboardData = { // Renamed to avoid conflict
   elements: [],
   appState: { ZenModeEnabled: false, viewModeEnabled: false } as ExcalidrawAppState,
   files: {}
@@ -260,7 +258,7 @@ const ensureNodeContentDefaults = (nodes: FileSystemNode[]): FileSystemNode[] =>
         elements: node.whiteboardContent.elements || [],
         appState: node.whiteboardContent.appState || { ZenModeEnabled: false, viewModeEnabled: false },
         files: node.whiteboardContent.files || {},
-    } : { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
+    } : { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
     ...(node.children && { children: ensureNodeContentDefaults(node.children) }),
   }));
 };
@@ -273,21 +271,17 @@ export async function getAllProjectsFromFirestore(userId?: string): Promise<Proj
   console.log(`[FirestoreService] Fetching projects for dashboard for user: ${userId}`);
   try {
     const projectsColRef = collection(db, PROJECTS_COLLECTION);
-    // Query for projects owned by the current user
     const q = query(projectsColRef, where("ownerId", "==", userId), orderBy('updatedAt', 'desc'));
     const querySnapshot = await getDocs(q);
     let projects = querySnapshot.docs.map(docSnap => convertTimestamps(docSnap.data()) as Project);
-    projects = projects.map(p => transformProjectPoints(p, transformExcalidrawPointsOnLoad));
+    projects = projects.map(p => processProjectWhiteboardData(p, 'load')); // Load transformation
 
     console.log(`[FirestoreService] Fetched ${projects.length} projects for user ${userId}.`);
+    // This default filling is for client-side representation after load
     return projects.map(p => ({
       ...p,
       textContent: p.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
-      whiteboardContent: p.whiteboardContent ? {
-          elements: p.whiteboardContent.elements || [],
-          appState: p.whiteboardContent.appState || { ZenModeEnabled: false, viewModeEnabled: false },
-          files: p.whiteboardContent.files || {},
-      } : { ...DEFAULT_EMPTY_WHITEBOARD_DATA },
+      whiteboardContent: p.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
       fileSystemRoots: ensureNodeContentDefaults(p.fileSystemRoots || [])
     }));
   } catch (error) {
@@ -296,31 +290,27 @@ export async function getAllProjectsFromFirestore(userId?: string): Promise<Proj
   }
 }
 
-// newProjectData can now include ownerId if the Project type supports it.
 export async function createProjectInFirestore(newProjectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt'>): Promise<Project> {
   console.log('[FirestoreService] Creating new project in Firestore:', newProjectData.name);
   try {
     const newProjectId = crypto.randomUUID();
     const now = new Date().toISOString();
 
+    // Ensure initial structure for a new project before 'save' transformation
     let projectToCreate: Project = {
-      ...newProjectData, // This will include ownerId if present in newProjectData
+      ...newProjectData,
       id: newProjectId,
       createdAt: now,
       updatedAt: now,
       fileSystemRoots: ensureNodeContentDefaults(newProjectData.fileSystemRoots || []),
       textContent: newProjectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
-      whiteboardContent: newProjectData.whiteboardContent ? {
-        elements: newProjectData.whiteboardContent.elements || [],
-        appState: newProjectData.whiteboardContent.appState || { ZenModeEnabled: false, viewModeEnabled: false },
-        files: newProjectData.whiteboardContent.files || {},
-      } : {...DEFAULT_EMPTY_WHITEBOARD_DATA},
+      whiteboardContent: newProjectData.whiteboardContent || { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
     };
 
-    projectToCreate = transformProjectPoints(projectToCreate, transformExcalidrawPointsForSave);
+    projectToCreate = processProjectWhiteboardData(projectToCreate, 'save'); // Save transformation
 
     const finalProjectToCreateRaw = sanitizeDataForFirestore(projectToCreate);
-    const finalProjectToCreate = {
+    const finalProjectToCreate = { // Ensure timestamps are strings for Firestore
       ...finalProjectToCreateRaw,
       createdAt: now,
       updatedAt: now,
@@ -330,8 +320,9 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
     await setDoc(projectDocRef, finalProjectToCreate);
     console.log(`[FirestoreService] Project "${finalProjectToCreate.name}" (ID: ${newProjectId}) created.`);
 
+    // For returning to the client, rehydrate it
     let returnProject = JSON.parse(JSON.stringify(finalProjectToCreate)) as Project;
-    returnProject = transformProjectPoints(returnProject, transformExcalidrawPointsOnLoad);
+    returnProject = processProjectWhiteboardData(returnProject, 'load'); // Load transformation for client
     return returnProject;
   } catch (error) {
     console.error('[FirestoreService] Error creating project:', error);
