@@ -4,7 +4,7 @@
 import React, { useEffect, useState, useRef, useCallback, memo } from "react"; // Added memo
 import type { ExcalidrawImperativeAPI } from "@excalidraw/excalidraw/types/types";
 import type { ExcalidrawElement, AppState, BinaryFiles } from "@excalidraw/excalidraw/types/element/types";
-import type { WhiteboardData } from "@/lib/types";
+import type { WhiteboardData, ExcalidrawAppState as CollabCanvasExcalidrawAppState } from "@/lib/types"; // Use CollabCanvasExcalidrawAppState
 import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
 import { useTheme } from "@/components/providers/ThemeProvider";
@@ -36,7 +36,7 @@ const DynamicallyLoadedExcalidraw = dynamic(
 
 const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = {
   elements: [],
-  appState: { ZenModeEnabled: false, viewModeEnabled: false },
+  appState: { ZenModeEnabled: false, viewModeEnabled: false } as CollabCanvasExcalidrawAppState,
   files: {}
 };
 
@@ -51,7 +51,7 @@ const WhiteboardComponent = ({
   const { theme: appTheme } = useTheme();
 
   const [sanitizedInitialData, setSanitizedInitialData] = useState<WhiteboardData>(
-    initialData || DEFAULT_EMPTY_WHITEBOARD_DATA
+    DEFAULT_EMPTY_WHITEBOARD_DATA // Initialize with a default structure
   );
 
   useEffect(() => {
@@ -60,18 +60,35 @@ const WhiteboardComponent = ({
 
   useEffect(() => {
     const baseData = initialData || DEFAULT_EMPTY_WHITEBOARD_DATA;
-    let currentAppState = baseData.appState ? { ...baseData.appState } : {};
+    
+    // Ensure appState is always an object, defaulting to Excalidraw's expected minimal structure
+    let currentAppState = baseData.appState 
+      ? { ...baseData.appState } 
+      : { ...DEFAULT_EMPTY_WHITEBOARD_DATA.appState } as CollabCanvasExcalidrawAppState;
 
-    if (currentAppState.hasOwnProperty('collaborators')) {
-      if (currentAppState.collaborators === null ||
-          (typeof currentAppState.collaborators === 'object' && !(currentAppState.collaborators instanceof Map))) {
+    // Ensure collaborators is a Map if the collaborators property exists in appState
+    if (currentAppState && currentAppState.hasOwnProperty('collaborators')) {
+      const collaboratorsData = currentAppState.collaborators;
+      if (collaboratorsData && typeof collaboratorsData === 'object' && !(collaboratorsData instanceof Map)) {
+        // Convert plain object from Firestore to a Map
+        const newCollaboratorsMap = new Map();
+        for (const key in collaboratorsData) {
+          if (Object.prototype.hasOwnProperty.call(collaboratorsData, key)) {
+            newCollaboratorsMap.set(key, (collaboratorsData as any)[key]);
+          }
+        }
+        currentAppState.collaborators = newCollaboratorsMap;
+      } else if (collaboratorsData === null || collaboratorsData === undefined) {
+        // If collaborators key exists but is null/undefined, initialize as an empty Map
         currentAppState.collaborators = new Map();
       }
+      // If it's already a Map or correctly undefined (not present as a key), do nothing.
     }
     
     setSanitizedInitialData({
-      ...baseData,
+      elements: Array.isArray(baseData.elements) ? baseData.elements : [], // Ensure elements is an array
       appState: currentAppState,
+      files: typeof baseData.files === 'object' && baseData.files !== null ? baseData.files : {}, // Ensure files is an object
     });
   }, [initialData]);
 
@@ -84,30 +101,32 @@ const WhiteboardComponent = ({
         api.updateScene({ appState: { ...currentInternalAppState, viewModeEnabled: isReadOnly } });
       }
     }
-  }, [isReadOnly]);
+  }, [isReadOnly, excalidrawAPIRef.current]); // Added excalidrawAPIRef.current as it's used
 
   // This useEffect ensures that if the initialData prop changes (e.g., from a remote update),
   // the Excalidraw component updates its scene.
   useEffect(() => {
     const api = excalidrawAPIRef.current;
     if (api && sanitizedInitialData) {
-      // Prepare the scene data, ensuring appState and files are not undefined if they are empty.
-      const sceneToUpdate: {
-        elements: readonly ExcalidrawElement[];
-        appState?: AppState;
-        files?: BinaryFiles;
-      } = {
-        elements: sanitizedInitialData.elements || [],
-      };
-      if (sanitizedInitialData.appState) {
-        sceneToUpdate.appState = sanitizedInitialData.appState;
+      // Check if the scene data is substantially different to avoid unnecessary updates
+      // This is a shallow comparison, deeper comparison might be needed if frequent unnecessary re-renders occur
+      const currentApiElements = api.getSceneElements();
+      const currentApiAppState = api.getAppState();
+
+      // Only update if elements or appState are meaningfully different
+      // This is a basic check; a more robust diffing might be needed for complex scenarios
+      if (
+        JSON.stringify(currentApiElements) !== JSON.stringify(sanitizedInitialData.elements) ||
+        JSON.stringify(currentApiAppState) !== JSON.stringify(sanitizedInitialData.appState)
+      ) {
+         api.updateScene({
+            elements: sanitizedInitialData.elements || [],
+            appState: sanitizedInitialData.appState as AppState, // Cast to Excalidraw's AppState
+            files: sanitizedInitialData.files || {},
+        });
       }
-      if (sanitizedInitialData.files) {
-        sceneToUpdate.files = sanitizedInitialData.files;
-      }
-      api.updateScene(sceneToUpdate);
     }
-  }, [sanitizedInitialData]); // This effect runs when sanitizedInitialData (derived from initialData prop) changes.
+  }, [sanitizedInitialData, excalidrawAPIRef.current]); // Added excalidrawAPIRef.current
 
   const handleExcalidrawChange = useCallback(
     (
@@ -115,11 +134,11 @@ const WhiteboardComponent = ({
       appState: AppState,
       files: BinaryFiles
     ) => {
-      if (onChange) {
-        onChange({ elements, appState, files });
+      if (onChange && !isReadOnly) { // Only call onChange if not read-only
+        onChange({ elements, appState: appState as CollabCanvasExcalidrawAppState, files });
       }
     },
-    [onChange] 
+    [onChange, isReadOnly] 
   );
 
   if (!isClient) {
@@ -138,7 +157,7 @@ const WhiteboardComponent = ({
         initialData={sanitizedInitialData} 
         onChange={handleExcalidrawChange}
         viewModeEnabled={isReadOnly} 
-        uiOptions={{ canvasActions: { toggleMenu: false } }}
+        uiOptions={{ canvasActions: { toggleMenu: false } }} // Hides the Excalidraw main menu
         theme={appTheme === 'dark' ? 'dark' : 'light'}
       />
     </div>
@@ -146,4 +165,3 @@ const WhiteboardComponent = ({
 };
 
 export const Whiteboard = memo(WhiteboardComponent);
-
