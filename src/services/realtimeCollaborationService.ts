@@ -104,7 +104,7 @@ const convertTimestamps = (data: any): any => {
 };
 
 // Helper to sanitize data for Firestore (e.g., convert Maps to Objects, remove undefined, handle DocumentReferences)
-const sanitizeDataForFirestore = (data: any): any => {
+export const sanitizeDataForFirestore = (data: any): any => {
   if (data instanceof DocumentReference) {
     console.warn("[FirestoreService] Found DocumentReference in data to be saved. Removing it to prevent error. Path:", data.path);
     return undefined;
