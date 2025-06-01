@@ -675,7 +675,7 @@ function ProjectPageContent() {
   return (
     <div className="flex h-screen flex-col fixed inset-0 pt-14">
        <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-14">
-        <div className="container flex h-full items-center px-4 sm:px-6 lg:px-8">
+        <div className=" flex h-full items-center px-2">
           <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2" aria-label="Back to dashboard">
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -775,26 +775,28 @@ function ProjectPageContent() {
               </Button>
             </div>
 
-            <Button variant="outline" onClick={() => setIsShareDialogOpen(true)}>
-              <Share2 className="mr-2 h-4 w-4" /> Share
-            </Button>
-            {!isReadOnlyView && authUser?.uid === currentProject.ownerId && (
-                <AlertDialog>
-                <AlertDialogTrigger asChild>
-                    <Button variant="destructive" size="icon" aria-label="Delete project">
-                    <Trash2 className="h-4 w-4" />
-                    </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                    <AlertDialogHeader>
-                    <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                        This action cannot be undone. This will permanently delete the
-                        project "{currentProject.name}" from the cloud.
-                    </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+          </div>
+          <div className="ml-auto flex items-center gap-2 justify-between">
+              <Button variant="outline" onClick={() => setIsShareDialogOpen(true)}>
+                <Share2 className="mr-2 h-4 w-4" /> Share
+              </Button>
+              {!isReadOnlyView && authUser?.uid === currentProject.ownerId && (
+                  <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="icon" aria-label="Delete project">
+                      <Trash2 className="h-4 w-4" />
+                      </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                      <AlertDialogHeader>
+                      <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                          This action cannot be undone. This will permanently delete the
+                          project "{currentProject.name}" from the cloud.
+                      </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
                     <AlertDialogAction onClick={confirmDeleteProject}>
                         Delete Project
                     </AlertDialogAction>
