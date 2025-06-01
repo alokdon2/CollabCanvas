@@ -1,21 +1,18 @@
 
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Reddit_Sans } from 'next/font/google'; // Changed font import
 import './globals.css';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import { Toaster } from "@/components/ui/toaster";
 import { siteConfig } from '@/config/site';
 import { ProjectProvider } from '@/contexts/ProjectContext';
-import { AuthProvider } from '@/contexts/AuthContext'; // Added AuthProvider
+import { AuthProvider } from '@/contexts/AuthContext';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+// Instantiate Reddit Sans
+const redditSans = Reddit_Sans({
+  variable: '--font-reddit-sans',
   subsets: ['latin'],
-});
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
+  display: 'swap', // Recommended for performance
 });
 
 export const metadata: Metadata = {
@@ -25,7 +22,7 @@ export const metadata: Metadata = {
   },
   description: siteConfig.description,
   icons: {
-    icon: "/favicon.ico", 
+    icon: "/favicon.ico",
   },
 };
 
@@ -36,9 +33,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${geistSans.variable} ${geistMono.variable} font-sans antialiased`} suppressHydrationWarning>
-        <AuthProvider> {/* Added AuthProvider Wrapper */}
-          <ProjectProvider> 
+      {/* Updated body className to use Reddit Sans variable and ensure font-sans is applied */}
+      <body className={`${redditSans.variable} font-sans antialiased`} suppressHydrationWarning>
+        <AuthProvider>
+          <ProjectProvider>
             <ThemeProvider
               defaultTheme="system"
               storageKey="collabcanvas-theme"

@@ -371,7 +371,7 @@ function ProjectPageContent() {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
     saveTimeoutRef.current = setTimeout(async () => {
-      if (isReadOnlyView || !currentProject || (saveStatus !== 'idle' && saveStatus !== 'error')) { 
+      if (isReadOnlyView || !currentProject || saveStatus !== 'idle') { 
         return;
       }
       await performSave(); // Call without overrides for auto-save
@@ -379,9 +379,7 @@ function ProjectPageContent() {
     }, 2000);
 
     return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [performSave]);
  // saveStatus, isReadOnlyView, mounted, isLoadingProject, currentProject, performSave
 
@@ -523,15 +521,10 @@ function ProjectPageContent() {
     if (saveStatus === 'saving') {
         toast({ title: "Saving...", description: "Please wait for current changes to save.", duration: 1500});
         return;
-    }
+    }    
     const newSelectedNodeId = selectedNode ? selectedNode.id : null;
     if (selectedFileNodeId === newSelectedNodeId) return; 
-
-    if (!isReadOnlyView && currentProject && (saveStatus === 'idle' || saveStatus === 'error')) {
-        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-        await performSave(); // Save current work with default overrides (null, null)
-    }
-    setSelectedFileNodeId(newSelectedNodeId); 
+    setSelectedFileNodeId(newSelectedNodeId);
   }, [isReadOnlyView, currentProject, selectedFileNodeId, performSave, toast, saveStatus]);
 
   const handleDeleteNodeRequest = useCallback((nodeId: string) => {
@@ -606,7 +599,7 @@ function ProjectPageContent() {
     if (effectiveReadOnly !== isReadOnlyView) {
       setIsReadOnlyView(effectiveReadOnly);
     }
-    if (effectiveReadOnly && mounted && !isLoadingProject && !toastAlreadyShownRef.current) {
+    if (effectiveReadOnly && mounted && !isLoadingProject && !toastAlreadyShownRef.current && currentProject.ownerId) {
       toast({
         title: currentIsSharedParam ? "Read-Only Mode" : "Viewing Others' Project",
         description: currentIsSharedParam ? "You are viewing a shared project. Changes cannot be saved." : "This project is owned by another user. You are in read-only mode.",
@@ -653,8 +646,8 @@ function ProjectPageContent() {
     );
   }
 
-  const editorKey = `editor-${selectedFileNodeId || 'project-root'}-${currentProject.updatedAt}`;
-  const whiteboardKey = `whiteboard-${selectedFileNodeId || 'project-root'}-${currentProject.updatedAt}`;
+  const editorKey = `editor-${selectedFileNodeId || 'project-root'}`;
+  const whiteboardKey = `whiteboard-${selectedFileNodeId || 'project-root'}`;
 
   const hasFileSystemRoots = activeFileSystemRoots && activeFileSystemRoots.length > 0;
   const showContentPlaceholder = !selectedFileNodeId && hasFileSystemRoots;
