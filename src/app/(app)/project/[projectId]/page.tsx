@@ -475,7 +475,6 @@ function ProjectPageContent() {
   const handleWhiteboardChange = useCallback((newData: WhiteboardData) => {
     if (isReadOnlyView) return;
 
-    // More selective comparison for appState to avoid loops from transient changes
     const oldElementsString = JSON.stringify(activeWhiteboardDataRef.current?.elements || []);
     const newElementsString = JSON.stringify(newData.elements || []);
 
@@ -484,14 +483,12 @@ function ProjectPageContent() {
       zoom: activeWhiteboardDataRef.current?.appState?.zoom,
       scrollX: activeWhiteboardDataRef.current?.appState?.scrollX,
       scrollY: activeWhiteboardDataRef.current?.appState?.scrollY,
-      // Add other persistable appState properties here if needed
     });
     const newAppStateString = JSON.stringify({
       viewBackgroundColor: newData.appState?.viewBackgroundColor,
       zoom: newData.appState?.zoom,
       scrollX: newData.appState?.scrollX,
       scrollY: newData.appState?.scrollY,
-      // Add other persistable appState properties here if needed
     });
 
 
@@ -517,34 +514,38 @@ function ProjectPageContent() {
       const newName = editingProjectName.trim();
       if (newName && newName !== currentProject.name) {
 
-        const updatedProjectDataForNameChange = {
-            ...currentProject, // This will include ownerId if currentProject has it
+        const updatedProjectDataForNameChange: Project = {
+            id: currentProject.id,
+            createdAt: currentProject.createdAt,
             name: newName,
+            ownerId: currentProject.ownerId, // Explicitly include ownerId
+            fileSystemRoots: activeFileSystemRoots,
             textContent: projectRootTextContent,
             whiteboardContent: projectRootWhiteboardData,
-            fileSystemRoots: activeFileSystemRoots,
+            updatedAt: new Date().toISOString(), // This will be updated by performSave logic
         };
         try {
-          if (saveTimeoutRef.current && pendingSaveDataRef.current?.project) {
-            clearTimeout(saveTimeoutRef.current);
-            saveTimeoutRef.current = null;
+          // If there's a pending auto-save, clear its timeout and save it immediately
+          // OR if there's pending data but no timeout (e.g. component unmounting), save it.
+          if (pendingSaveDataRef.current?.project && (saveTimeoutRef.current || !isSavingRef.current)) {
+            if (saveTimeoutRef.current) {
+              clearTimeout(saveTimeoutRef.current);
+              saveTimeoutRef.current = null;
+            }
             await performSave(pendingSaveDataRef.current.project);
-            pendingSaveDataRef.current = null;
-          } else if (pendingSaveDataRef.current?.project && !saveTimeoutRef.current) {
-             await performSave(pendingSaveDataRef.current.project);
-             pendingSaveDataRef.current = null;
+            pendingSaveDataRef.current = null; // Clear pending data after saving
           }
-
-          await performSave(updatedProjectDataForNameChange);
-          setCurrentProject(prev => prev ? {...prev, name: newName, updatedAt: new Date().toISOString()} : null);
+          
+          await performSave(updatedProjectDataForNameChange); // Save the name change
+          setCurrentProject(prev => prev ? {...prev, name: newName, updatedAt: updatedProjectDataForNameChange.updatedAt} : null);
           setCurrentProjectName(newName);
           setTimeout(() => toast({title: "Project Renamed", description: `Project name updated to "${newName}".`}), 0);
         } catch (error) {
           setTimeout(() => toast({title: "Error", description: "Failed to update project name.", variant: "destructive"}), 0);
-          setEditingProjectName(currentProject.name);
+          setEditingProjectName(currentProject.name); // Revert on error
         }
       } else if (currentProject) {
-        setEditingProjectName(currentProject.name);
+        setEditingProjectName(currentProject.name); // Revert if name is empty or unchanged
       }
     }
     setIsEditingName(!isEditingName);
@@ -1012,5 +1013,7 @@ export default function ProjectPage() {
     </Suspense>
   )
 }
+
+    
 
     
