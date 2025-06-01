@@ -1,8 +1,8 @@
 
 "use client";
 
-import { useEffect, useState, useCallback, useRef, Suspense } from "react"; // Added Suspense
-import { useParams, useRouter, useSearchParams } from "next/navigation"; // Added useSearchParams
+import { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { Whiteboard } from "@/components/Whiteboard";
 import type { Project, WhiteboardData, FileSystemNode, ExcalidrawAppState } from "@/lib/types";
@@ -50,6 +50,7 @@ import {
   subscribeToProjectUpdates as realtimeSubscribeToProjectUpdates,
   deleteProjectFromFirestore
 } from "@/services/realtimeCollaborationService";
+import { useAuth } from "@/contexts/AuthContext"; // Import useAuth
 
 
 type ViewMode = "editor" | "whiteboard" | "both";
@@ -186,9 +187,9 @@ function ProjectPageContent() {
   const projectId = params.projectId as string;
   const { toast } = useToast();
   const { currentProjectName: currentProjectNameFromContext, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder } = useProjectContext();
+  const { user: authUser } = useAuth(); // Get authenticated user
 
   const searchParams = useSearchParams();
-  // Initialize isReadOnlyView directly from searchParams for immediate effect
   const initialIsShared = searchParams.get('shared') === 'true';
   const [isReadOnlyView, setIsReadOnlyView] = useState(initialIsShared);
 
@@ -232,21 +233,33 @@ function ProjectPageContent() {
   }, []);
 
 
-  // useEffect to react to changes in searchParams if they happen after initial load (less common)
-  // And to show toast when entering read-only mode.
   useEffect(() => {
     const currentIsShared = searchParams.get('shared') === 'true';
-    if (currentIsShared !== isReadOnlyView) {
-        setIsReadOnlyView(currentIsShared); // Keep state in sync if params change
+    let effectiveReadOnly = currentIsShared;
+
+    if (currentProject && authUser && projectRootTextContent !== DEFAULT_EMPTY_TEXT_CONTENT ) { // Ensure project is loaded to check ownerId
+        if (!currentIsShared && projectData.ownerId && authUser.uid !== projectData.ownerId) {
+             effectiveReadOnly = true; // Force read-only if not owner and not explicitly shared
+        }
+    }
+    
+    if (effectiveReadOnly !== isReadOnlyView) {
+        setIsReadOnlyView(effectiveReadOnly);
     }
 
-    if (currentIsShared && mounted) { // Only show toast if mounted and shared
+    if (currentIsShared && mounted && !isLoadingProject) { 
       toast({
         title: "Read-Only Mode",
         description: "You are viewing a shared project. Changes cannot be saved.",
       });
+    } else if (effectiveReadOnly && !currentIsShared && mounted && !isLoadingProject && currentProject?.ownerId && authUser?.uid !== currentProject.ownerId) {
+        toast({
+            title: "Viewing Others' Project",
+            description: "This project is owned by another user. You are in read-only mode.",
+            variant: "default"
+        });
     }
-  }, [searchParams, toast, mounted, isReadOnlyView]);
+  }, [searchParams, toast, mounted, isReadOnlyView, currentProject, authUser, isLoadingProject]);
 
 
   const updateLocalStateFromProject = useCallback((projectData: Project | null, source: "initialLoad" | "realtimeUpdate" = "initialLoad") => {
@@ -305,10 +318,20 @@ function ProjectPageContent() {
       if (!projectId) return;
       setIsLoadingProject(true);
       try {
-        let projectData = await realtimeLoadProjectData(projectId);
+        const projectData = await realtimeLoadProjectData(projectId);
 
         if (projectData) {
           console.log(`[ProjectPage] Project ${projectId} loaded from Firestore.`);
+          
+          // Determine read-only status based on shared link and ownership
+          const isSharedViaUrl = searchParams.get('shared') === 'true';
+          let effectiveReadOnly = isSharedViaUrl;
+          if (!isSharedViaUrl && authUser && projectData.ownerId && authUser.uid !== projectData.ownerId) {
+            console.warn("[ProjectPage] User is not owner and not a shared link. Forcing read-only mode.");
+            effectiveReadOnly = true;
+          }
+          setIsReadOnlyView(effectiveReadOnly); // Set read-only state before updating local state
+
           updateLocalStateFromProject(projectData, "initialLoad");
           lastSavedToServerTimestampRef.current = projectData.updatedAt;
 
@@ -345,7 +368,7 @@ function ProjectPageContent() {
       }
     }
 
-    if (mounted) { // Ensure mounted before fetching
+    if (mounted) { 
         fetchAndInitializeProject();
     }
 
@@ -370,7 +393,7 @@ function ProjectPageContent() {
         unsubscribeRealtime();
       }
     };
-  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder, updateLocalStateFromProject, mounted]);
+  }, [projectId, router, toast, setCurrentProjectName, registerTriggerNewFile, registerTriggerNewFolder, updateLocalStateFromProject, mounted, authUser, searchParams]);
 
 
   useEffect(() => {
@@ -386,7 +409,7 @@ function ProjectPageContent() {
 
     isSavingRef.current = true;
     const timestampForThisSave = new Date().toISOString();
-    const finalProjectToSave = {...projectToSave, updatedAt: timestampForThisSave};
+    const finalProjectToSave = {...projectToSave, ownerId: projectToSave.ownerId || authUser?.uid, updatedAt: timestampForThisSave}; // Ensure ownerId
 
     try {
       await realtimeSaveProjectData(finalProjectToSave);
@@ -404,7 +427,7 @@ function ProjectPageContent() {
     } finally {
       isSavingRef.current = false;
     }
-  }, [currentProjectNameFromContext, setCurrentProjectName, toast, isReadOnlyView]);
+  }, [currentProjectNameFromContext, setCurrentProjectName, toast, isReadOnlyView, authUser]);
 
 
   useEffect(() => {
@@ -422,7 +445,7 @@ function ProjectPageContent() {
         id: currentProject.id,
         createdAt: currentProject.createdAt,
         name: editingProjectName || currentProject.name,
-        ownerId: currentProject.ownerId, // Ensure ownerId is included
+        ownerId: currentProject.ownerId || authUser?.uid, 
         fileSystemRoots: [...activeFileSystemRoots],
         textContent: projectRootTextContent,
         whiteboardContent: projectRootWhiteboardData,
@@ -457,7 +480,7 @@ function ProjectPageContent() {
     projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots,
     editingProjectName,
     mounted, isLoadingProject, currentProject,
-    performSave, toast, isReadOnlyView
+    performSave, toast, isReadOnlyView, authUser
   ]);
 
   const handleTextChange = useCallback((newText: string) => {
@@ -518,38 +541,36 @@ function ProjectPageContent() {
             id: currentProject.id,
             createdAt: currentProject.createdAt,
             name: newName,
-            ownerId: currentProject.ownerId, // Explicitly include ownerId
+            ownerId: currentProject.ownerId || authUser?.uid, 
             fileSystemRoots: activeFileSystemRoots,
             textContent: projectRootTextContent,
             whiteboardContent: projectRootWhiteboardData,
-            updatedAt: new Date().toISOString(), // This will be updated by performSave logic
+            updatedAt: new Date().toISOString(), 
         };
         try {
-          // If there's a pending auto-save, clear its timeout and save it immediately
-          // OR if there's pending data but no timeout (e.g. component unmounting), save it.
           if (pendingSaveDataRef.current?.project && (saveTimeoutRef.current || !isSavingRef.current)) {
             if (saveTimeoutRef.current) {
               clearTimeout(saveTimeoutRef.current);
               saveTimeoutRef.current = null;
             }
             await performSave(pendingSaveDataRef.current.project);
-            pendingSaveDataRef.current = null; // Clear pending data after saving
+            pendingSaveDataRef.current = null; 
           }
           
-          await performSave(updatedProjectDataForNameChange); // Save the name change
+          await performSave(updatedProjectDataForNameChange); 
           setCurrentProject(prev => prev ? {...prev, name: newName, updatedAt: updatedProjectDataForNameChange.updatedAt} : null);
           setCurrentProjectName(newName);
           setTimeout(() => toast({title: "Project Renamed", description: `Project name updated to "${newName}".`}), 0);
         } catch (error) {
           setTimeout(() => toast({title: "Error", description: "Failed to update project name.", variant: "destructive"}), 0);
-          setEditingProjectName(currentProject.name); // Revert on error
+          setEditingProjectName(currentProject.name); 
         }
       } else if (currentProject) {
-        setEditingProjectName(currentProject.name); // Revert if name is empty or unchanged
+        setEditingProjectName(currentProject.name); 
       }
     }
     setIsEditingName(!isEditingName);
-  }, [isReadOnlyView, isEditingName, currentProject, editingProjectName, setCurrentProjectName, toast, projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots, performSave]);
+  }, [isReadOnlyView, isEditingName, currentProject, editingProjectName, setCurrentProjectName, toast, projectRootTextContent, projectRootWhiteboardData, activeFileSystemRoots, performSave, authUser]);
 
 
   const confirmDeleteProject = useCallback(async () => {
@@ -558,6 +579,11 @@ function ProjectPageContent() {
       return;
     }
     if (!currentProject) return;
+    // Ownership check before delete attempt client-side (Firestore rules will also check)
+    if (authUser && currentProject.ownerId !== authUser.uid) {
+        toast({ title: "Permission Denied", description: "You are not the owner of this project and cannot delete it.", variant: "destructive" });
+        return;
+    }
     try {
       await deleteProjectFromFirestore(currentProject.id);
       setTimeout(() => toast({ title: "Project Deleted", description: `"${currentProject.name}" has been deleted from the cloud.` }), 0);
@@ -565,7 +591,7 @@ function ProjectPageContent() {
     } catch (error) {
       setTimeout(() => toast({ title: "Error Deleting Project", description: "Could not delete project from cloud.", variant: "destructive" }), 0);
     }
-  }, [currentProject, router, toast, isReadOnlyView]);
+  }, [currentProject, router, toast, isReadOnlyView, authUser]);
 
 
   const handleOpenNewItemDialog = useCallback((type: 'file' | 'folder', parentNodeId: string | null) => {
@@ -1008,12 +1034,8 @@ function ProjectPageContent() {
 
 export default function ProjectPage() {
   return (
-    <Suspense fallback={<div>Loading URL parameters...</div>}>
+    <Suspense fallback={<div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary" /><p className="ml-2">Loading Project...</p></div>}>
       <ProjectPageContent />
     </Suspense>
   )
 }
-
-    
-
-    
