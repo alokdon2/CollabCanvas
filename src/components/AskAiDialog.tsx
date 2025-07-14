@@ -102,10 +102,10 @@ export function AskAiDialog({ isOpen, onOpenChange, onInsertResponse, initialQue
               <Alert>
                 <Sparkles className="h-4 w-4" />
                 <AlertTitle>AI Response</AlertTitle>
-                <AlertDescription asChild>
-                  <ScrollArea className="max-h-[250px] w-full mt-2 rounded-md border bg-muted/50 p-2">
-                    <pre className="whitespace-pre-wrap text-sm font-sans">{aiResult.aiResponse}</pre>
-                  </ScrollArea>
+                <AlertDescription
+                  className="mt-2 max-h-[250px] w-full overflow-y-auto rounded-md border bg-muted/50 p-2"
+                >
+                  <pre className="whitespace-pre-wrap text-sm font-sans">{aiResult.aiResponse}</pre>
                 </AlertDescription>
               </Alert>
               {aiResult.explanation && (
