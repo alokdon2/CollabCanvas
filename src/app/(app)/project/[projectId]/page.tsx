@@ -51,7 +51,6 @@ import {
   deleteProjectFromFirestore,
   ensureNodeContentDefaults,
   processSingleWhiteboardData,
-  subscribeToProjectUpdates,
 } from "@/services/realtimeCollaborationService";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -424,46 +423,6 @@ function ProjectPageContent() {
     };
   }, [isReadOnlyView, currentProject, performSave, toast, saveStatus]);
 
-  // --- Real-time Subscription ---
-  useEffect(() => {
-    if (!projectId || !mounted || isLoadingProject) return;
-
-    const handleProjectUpdate = (updatedProject: Project | null) => {
-        if (isProcessingSnapshotRef.current) return;
-        isProcessingSnapshotRef.current = true;
-        
-        if (updatedProject === null) {
-            toast({ title: "Project Deleted", description: "This project has been deleted.", variant: "destructive" });
-            router.replace("/");
-            return;
-        }
-        
-        // Only update if it's a change from another user/tab or if in read-only mode
-        if (isReadOnlyView || (currentProject && updatedProject.updatedAt > currentProject.updatedAt)) {
-            setCurrentProject(updatedProject);
-        }
-        
-        setTimeout(() => { isProcessingSnapshotRef.current = false; }, 100);
-    };
-    
-    const handleSubscriptionError = (error: Error) => {
-        console.error("Subscription error:", error);
-        toast({ title: "Real-time Error", description: "Lost connection to real-time updates.", variant: "destructive" });
-    };
-
-    const unsubscribe = subscribeToProjectUpdates(
-        projectId,
-        handleProjectUpdate,
-        handleSubscriptionError
-    );
-
-    return () => {
-        if (unsubscribe) {
-            unsubscribe();
-        }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, mounted, isLoadingProject]);
 
   // --- User Input Handlers (triggering saveStatus='idle') ---
   const handleTextChange = useCallback((newText: string) => {
