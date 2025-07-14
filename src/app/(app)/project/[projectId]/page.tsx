@@ -51,6 +51,7 @@ import {
   deleteProjectFromFirestore,
   ensureNodeContentDefaults,
   processSingleWhiteboardData,
+  subscribeToProjectUpdates,
 } from "@/services/realtimeCollaborationService";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -205,6 +206,7 @@ function ProjectPageContent() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
   const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isProcessingSnapshotRef = useRef(false);
 
   // --- Initial Load ---
   useEffect(() => {
@@ -363,7 +365,7 @@ function ProjectPageContent() {
 
   // --- Auto-Save useEffect ---
   useEffect(() => {
-    if (isReadOnlyView || !mounted || isLoadingProject || !currentProject || (saveStatus !== 'idle' && saveStatus !== 'error')) {
+    if (isReadOnlyView || !mounted || isLoadingProject || (saveStatus !== 'idle' && saveStatus !== 'error')) {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       return;
     }
@@ -371,7 +373,7 @@ function ProjectPageContent() {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
 
     saveTimeoutRef.current = setTimeout(async () => {
-      if (isReadOnlyView || !currentProject || saveStatus !== 'idle') { 
+      if (isReadOnlyView || saveStatus !== 'idle') { 
         return;
       }
       await performSave(); // Call without overrides for auto-save
@@ -379,9 +381,89 @@ function ProjectPageContent() {
     }, 2000);
 
     return () => {
+      if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [performSave]);
- // saveStatus, isReadOnlyView, mounted, isLoadingProject, currentProject, performSave
+  }, [activeTextContent, performSave, isReadOnlyView, mounted, isLoadingProject, saveStatus]);
+
+
+  // --- Keyboard shortcut for saving ---
+  useEffect(() => {
+    const handleKeyDown = async (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+        event.preventDefault();
+        if (isReadOnlyView || !currentProject || saveStatus === 'saving') {
+          toast({
+            title: "Cannot Save",
+            description: isReadOnlyView ? "Project is in read-only mode." : (saveStatus === 'saving' ? "Already saving..." : "Project not ready to save."),
+            variant: "default",
+            duration: 2000,
+          });
+          return;
+        }
+
+        // Clear any pending auto-save timeout
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+          saveTimeoutRef.current = null;
+        }
+        
+        // Manually trigger save
+        await performSave();
+        toast({
+          title: "Project Saved",
+          description: "Your changes have been saved manually.",
+          duration: 2000
+        });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isReadOnlyView, currentProject, performSave, toast, saveStatus]);
+
+  // --- Real-time Subscription ---
+  useEffect(() => {
+    if (!projectId || !mounted || isLoadingProject) return;
+
+    const handleProjectUpdate = (updatedProject: Project | null) => {
+        if (isProcessingSnapshotRef.current) return;
+        isProcessingSnapshotRef.current = true;
+        
+        if (updatedProject === null) {
+            toast({ title: "Project Deleted", description: "This project has been deleted.", variant: "destructive" });
+            router.replace("/");
+            return;
+        }
+        
+        // Only update if it's a change from another user/tab or if in read-only mode
+        if (isReadOnlyView || (currentProject && updatedProject.updatedAt > currentProject.updatedAt)) {
+            setCurrentProject(updatedProject);
+        }
+        
+        setTimeout(() => { isProcessingSnapshotRef.current = false; }, 100);
+    };
+    
+    const handleSubscriptionError = (error: Error) => {
+        console.error("Subscription error:", error);
+        toast({ title: "Real-time Error", description: "Lost connection to real-time updates.", variant: "destructive" });
+    };
+
+    const unsubscribe = subscribeToProjectUpdates(
+        projectId,
+        handleProjectUpdate,
+        handleSubscriptionError
+    );
+
+    return () => {
+        if (unsubscribe) {
+            unsubscribe();
+        }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, mounted, isLoadingProject]);
 
   // --- User Input Handlers (triggering saveStatus='idle') ---
   const handleTextChange = useCallback((newText: string) => {
@@ -525,7 +607,7 @@ function ProjectPageContent() {
     const newSelectedNodeId = selectedNode ? selectedNode.id : null;
     if (selectedFileNodeId === newSelectedNodeId) return; 
     setSelectedFileNodeId(newSelectedNodeId);
-  }, [isReadOnlyView, currentProject, selectedFileNodeId, performSave, toast, saveStatus]);
+  }, [selectedFileNodeId, saveStatus, toast]);
 
   const handleDeleteNodeRequest = useCallback((nodeId: string) => {
     if (isReadOnlyView) {
