@@ -53,6 +53,10 @@ export function ThemeSwitcher() {
           <Sun className="mr-2 h-4 w-4" />
           <span>Sakura</span>
         </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => setTheme("strawhat")}>
+          <Sun className="mr-2 h-4 w-4" />
+          <span>Straw Hat</span>
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => setTheme("system")}>
           <Laptop className="mr-2 h-4 w-4" />
           <span>System</span>

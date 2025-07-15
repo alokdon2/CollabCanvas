@@ -169,6 +169,27 @@
     --ring: 330 85% 65%;
   }
 
+  .theme-strawhat {
+    --background: 45 50% 95%; /* sandy */
+    --foreground: 25 40% 15%; /* dark brown */
+    --card: 45 50% 95%;
+    --card-foreground: 25 40% 15%;
+    --popover: 45 50% 95%;
+    --popover-foreground: 25 40% 15%;
+    --primary: 0 85% 55%; /* Luffy red */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 200 70% 90%; /* sky blue */
+    --secondary-foreground: 25 40% 15%;
+    --muted: 200 70% 90%;
+    --muted-foreground: 200 20% 45%;
+    --accent: 50 90% 60%; /* straw hat yellow */
+    --accent-foreground: 25 40% 15%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 45 30% 85%;
+    --input: 45 30% 85%;
+    --ring: 0 85% 55%;
+  }
 }
 
 @layer base {
@@ -353,6 +374,23 @@
     background-size: 200px 200px, 100px 100px;
   }
   /* END: Sakura Theme Petal Animation */
+  
+  /* START: Straw Hat Theme Background Pattern */
+  .theme-strawhat body:before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200"><path d="M100 20 C 60 20, 25 50, 25 90 C 25 130, 60 160, 100 160 C 140 160, 175 130, 175 90 C 175 50, 140 20, 100 20 Z M100 30 C 135 30, 165 55, 165 90 C 165 125, 135 150, 100 150 C 65 150, 35 125, 35 90 C 35 55, 65 30, 100 30 Z" fill="hsl(50, 90%, 60%)" fill-opacity="0.1" /><path d="M100 20 C 90 20, 80 25, 80 35 L 120 35 C 120 25, 110 20, 100 20" fill="hsl(0, 85%, 55%)" fill-opacity="0.1" /><circle cx="75" cy="80" r="10" fill="hsl(25, 40%, 15%)" fill-opacity="0.1" /><circle cx="125" cy="80" r="10" fill="hsl(25, 40%, 15%)" fill-opacity="0.1" /><path d="M70 110 L 130 110" stroke="hsl(25, 40%, 15%)" stroke-width="2" stroke-linecap="round" fill="none" fill-opacity="0.1" /></svg>');
+    background-repeat: repeat;
+    background-size: 250px 250px;
+    opacity: 0.3;
+    z-index: -1;
+    pointer-events: none;
+  }
+  /* END: Straw Hat Theme Background Pattern */
 }
 
 /* TipTap Placeholder styles - Moved to @layer utilities for higher precedence */
@@ -425,6 +463,7 @@
     
 
   
+
 
 
 

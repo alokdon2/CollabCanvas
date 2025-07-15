@@ -3,8 +3,8 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
-const THEMES = ['light', 'midnight', 'latte', 'matrix', 'sakura'] as const;
-const THEME_CLASSES = ['light', 'dark', 'theme-midnight', 'theme-latte', 'theme-matrix', 'theme-sakura'];
+const THEMES = ['light', 'midnight', 'latte', 'matrix', 'sakura', 'strawhat'] as const;
+const THEME_CLASSES = ['theme-midnight', 'theme-latte', 'theme-matrix', 'theme-sakura', 'theme-strawhat', 'dark'];
 
 export type Theme = (typeof THEMES)[number] | 'system';
 
@@ -47,7 +47,7 @@ export function ThemeProvider({
     const root = window.document.documentElement;
     
     // Remove all possible theme classes
-    root.classList.remove(...THEME_CLASSES, 'dark');
+    root.classList.remove(...THEME_CLASSES);
     
     // Determine the effective theme
     let effectiveTheme: (typeof THEMES)[number];
@@ -72,6 +72,9 @@ export function ThemeProvider({
             break;
         case 'sakura':
             root.classList.add('theme-sakura');
+            break;
+        case 'strawhat':
+            root.classList.add('theme-strawhat');
             break;
         case 'light':
         default:
