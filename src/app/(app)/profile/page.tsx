@@ -7,13 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { Loader2, User } from 'lucide-react';
+import { Loader2, User, ArrowLeft } from 'lucide-react';
 import { z } from 'zod';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useToast } from '@/hooks/use-toast';
 import { updateProfile } from 'firebase/auth';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 const profileSchema = z.object({
   displayName: z.string().min(2, { message: 'Name must be at least 2 characters.' }).max(50, { message: 'Name cannot be longer than 50 characters.' }),
@@ -23,18 +24,25 @@ const profileSchema = z.object({
 type ProfileFormValues = z.infer<typeof profileSchema>;
 
 export default function ProfilePage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, setUser: setAuthUser } = useAuth(); // Get setUser from context
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
+  const router = useRouter();
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
-    values: {
-      displayName: user?.displayName || '',
-      photoURL: user?.photoURL || '',
-    },
+    // Use `useEffect` to safely update form values when user loads
   });
 
+  useEffect(() => {
+    if (user) {
+      form.reset({
+        displayName: user.displayName || '',
+        photoURL: user.photoURL || '',
+      });
+    }
+  }, [user, form]);
+  
   async function onSubmit(data: ProfileFormValues) {
     if (!user) {
       toast({ title: "Error", description: "You must be logged in to update your profile.", variant: "destructive" });
@@ -47,8 +55,12 @@ export default function ProfilePage() {
         displayName: data.displayName,
         photoURL: data.photoURL,
       });
+
+      // Manually create a new user object to update the context state
+      const updatedUser = { ...user, displayName: data.displayName, photoURL: data.photoURL };
+      setAuthUser(updatedUser as any); // Update context state
+
       toast({ title: "Profile Updated", description: "Your profile has been updated successfully." });
-      // Note: A page reload might be needed to see avatar changes everywhere instantly, or a more complex state management.
     } catch (error) {
       console.error("Profile update error:", error);
       toast({ title: "Update Failed", description: "Could not update your profile. Please try again.", variant: "destructive" });
@@ -86,14 +98,19 @@ export default function ProfilePage() {
 
   return (
     <div className="container mx-auto max-w-4xl p-4 sm:p-6 lg:p-8">
-      <header className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <User className="h-8 w-8" />
-            My Profile
-        </h1>
-        <p className="text-muted-foreground mt-1">
-            View and edit your personal information.
-        </p>
+      <header className="mb-8 flex items-center gap-4">
+        <Button variant="ghost" size="icon" onClick={() => router.push('/')} aria-label="Back to dashboard">
+            <ArrowLeft className="h-5 w-5" />
+        </Button>
+        <div>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+                <User className="h-8 w-8" />
+                My Profile
+            </h1>
+            <p className="text-muted-foreground mt-1">
+                View and edit your personal information.
+            </p>
+        </div>
       </header>
       <Card>
         <CardHeader>
@@ -103,7 +120,7 @@ export default function ProfilePage() {
               <AvatarFallback>{userAvatarFallback}</AvatarFallback>
             </Avatar>
             <div>
-                <CardTitle>{user.displayName || "Anonymous User"}</CardTitle>
+                <CardTitle>{form.watch('displayName') || "Anonymous User"}</CardTitle>
                 <CardDescription>{user.email}</CardDescription>
             </div>
           </div>
@@ -137,7 +154,7 @@ export default function ProfilePage() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" disabled={isSaving}>
+              <Button type="submit" disabled={isSaving || !form.formState.isDirty}>
                 {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Save Changes
               </Button>

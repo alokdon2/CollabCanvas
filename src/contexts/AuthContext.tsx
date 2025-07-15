@@ -12,6 +12,7 @@ import {
   AuthError,
   GoogleAuthProvider,
   signInWithPopup,
+  updateProfile,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
@@ -20,8 +21,9 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   error: AuthError | null;
+  setUser: (user: User | null) => void; // Expose setUser
   signInWithEmail: (email: string, pass: string) => Promise<void>;
-  signUpWithEmail: (email: string, pass: string) => Promise<void>;
+  signUpWithEmail: (email: string, pass: string, name: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
   signOutUser: () => Promise<void>;
 }
@@ -56,11 +58,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const signUpWithEmail = async (email: string, pass: string) => {
+  const signUpWithEmail = async (email: string, pass: string, name: string) => {
     setLoading(true);
     setError(null);
     try {
-      await createUserWithEmailAndPassword(auth, email, pass);
+      const userCredential = await createUserWithEmailAndPassword(auth, email, pass);
+      if (userCredential.user) {
+        await updateProfile(userCredential.user, { displayName: name });
+        // Manually update the user state in the context after profile update
+        setUser({ ...userCredential.user, displayName: name });
+      }
     } catch (e) {
       setError(e as AuthError);
     } finally {
@@ -109,6 +116,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         user,
         loading,
         error,
+        setUser, // Pass down setUser
         signInWithEmail,
         signUpWithEmail,
         signInWithGoogle,

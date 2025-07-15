@@ -50,7 +50,7 @@ export default function SignupPage() {
   });
 
   async function onSubmit(data: SignupFormValues) {
-    await signUpWithEmail(data.email, data.password);
+    await signUpWithEmail(data.email, data.password, data.name);
   }
   
   const { loading: userLoading } = useAuth();
