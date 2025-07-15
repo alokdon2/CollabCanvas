@@ -284,29 +284,25 @@ function ProjectPageContent() {
 
   // --- Construct project data for saving ---
   const constructProjectDataToSave = useCallback((
-    projectState: Project,
-    nameOverride: string | null = null,
-    fileSystemRootsOverride: FileSystemNode[] | null = null
+    projectState: Project
   ): Project | null => {
       
-    const nameForSave = nameOverride ?? projectState.name;
-    const fileSystemRootsForSave = fileSystemRootsOverride ?? projectState.fileSystemRoots;
     let finalProjectState: Project;
 
     // Save the currently active content back into the project state before saving
     if (selectedFileNodeId) {
-        const selectedNode = findNodeByIdRecursive(fileSystemRootsForSave, selectedFileNodeId);
+        const selectedNode = findNodeByIdRecursive(projectState.fileSystemRoots, selectedFileNodeId);
         if (selectedNode) {
             const updatedNode = {
                 ...selectedNode,
                 textContent: activeTextContent,
                 whiteboardContent: activeWhiteboardDataRef.current,
             };
-            const updatedRoots = replaceNodeInTree(fileSystemRootsForSave, selectedFileNodeId, updatedNode);
+            const updatedRoots = replaceNodeInTree(projectState.fileSystemRoots, selectedFileNodeId, updatedNode);
             finalProjectState = { ...projectState, fileSystemRoots: updatedRoots };
         } else {
              // This case should ideally not happen if state is consistent
-            finalProjectState = { ...projectState, fileSystemRoots: fileSystemRootsForSave };
+            finalProjectState = { ...projectState };
         }
     } else {
         // Saving the root content
@@ -314,13 +310,11 @@ function ProjectPageContent() {
             ...projectState,
             textContent: activeTextContent,
             whiteboardContent: activeWhiteboardDataRef.current,
-            fileSystemRoots: fileSystemRootsForSave,
         };
     }
     
     return {
         ...finalProjectState,
-        name: nameForSave,
         updatedAt: new Date().toISOString(),
     };
   }, [activeTextContent, selectedFileNodeId]);
@@ -328,25 +322,18 @@ function ProjectPageContent() {
 
   // --- Perform Save Operation ---
   const performSave = useCallback(async (
+    projectToSave: Project,
     isStructuralChange: boolean = false
   ) => {
-    if (isReadOnlyView || !authUser || !currentProject || saveStatus === 'saving') {
+    if (isReadOnlyView || !authUser || saveStatus === 'saving') {
       return;
     }
 
     setSaveStatus('saving');
     
-    const constructedProjectToSave = constructProjectDataToSave(currentProject);
-
-    if (!constructedProjectToSave) {
-        console.error("[ProjectPage performSave] constructProjectDataToSave returned null.");
-        setSaveStatus('error');
-        return;
-    }
-    
     const finalProjectDataForFirestore: Project = {
-        ...constructedProjectToSave,
-        ownerId: constructedProjectToSave.ownerId || authUser.uid, 
+        ...projectToSave,
+        ownerId: projectToSave.ownerId || authUser.uid, 
     };
 
     try {
@@ -359,7 +346,8 @@ function ProjectPageContent() {
       if (isStructuralChange) {
         toast({ title: "Project Updated", description: "Your project structure has been saved." });
       } else {
-        toast({ title: "Project Saved", description: "Your changes have been saved." });
+        // Don't toast on every auto-save, only manual saves.
+        // The save button can be used for explicit save toasts.
       }
 
     } catch (error) {
@@ -367,7 +355,19 @@ function ProjectPageContent() {
       toast({ title: "Save Error", description: `Could not save project: ${(error as Error).message}`, variant: "destructive" });
       setSaveStatus('error');
     }
-  }, [isReadOnlyView, authUser, currentProject, constructProjectDataToSave, toast, saveStatus]);
+  }, [isReadOnlyView, authUser, toast, saveStatus]);
+
+
+  const handleManualSave = useCallback(async () => {
+    if (!currentProject || saveStatus !== 'unsaved') return;
+
+    const constructedProject = constructProjectDataToSave(currentProject);
+    if (constructedProject) {
+        await performSave(constructedProject, false);
+        toast({ title: "Project Saved", description: "Your changes have been saved." });
+    }
+  }, [currentProject, constructProjectDataToSave, performSave, saveStatus, toast]);
+
 
   // --- Keyboard shortcut for saving ---
   useEffect(() => {
@@ -375,7 +375,7 @@ function ProjectPageContent() {
       if ((event.ctrlKey || event.metaKey) && event.key === 's') {
         event.preventDefault();
         if (saveStatus === 'unsaved') {
-          performSave();
+          handleManualSave();
         }
       }
     };
@@ -385,7 +385,7 @@ function ProjectPageContent() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [performSave, saveStatus]);
+  }, [handleManualSave, saveStatus]);
 
 
   // --- User Input Handlers (triggering 'unsaved' status) ---
@@ -401,10 +401,19 @@ function ProjectPageContent() {
     if (saveStatus !== 'saving') setSaveStatus('unsaved');
   }, [isReadOnlyView, saveStatus]);
 
-  const handleProjectNameChange = useCallback(() => {
-    if (isReadOnlyView) return;
-    if (saveStatus !== 'saving') setSaveStatus('unsaved');
-  }, [isReadOnlyView, saveStatus]);
+  const handleProjectNameChange = useCallback(async (newName: string) => {
+    if (isReadOnlyView || !currentProject || newName === currentProject.name) return;
+
+    // Immediately update the project state for UI responsiveness
+    const updatedProject: Project = { ...currentProject, name: newName };
+    setCurrentProject(updatedProject);
+
+    // Then, save this change to the database
+    const constructedProject = constructProjectDataToSave(updatedProject);
+    if (constructedProject) {
+      await performSave(constructedProject, true);
+    }
+  }, [isReadOnlyView, currentProject, constructProjectDataToSave, performSave]);
 
 
   // --- Other Actions (Create, Delete, Share, etc.) ---
@@ -414,18 +423,15 @@ function ProjectPageContent() {
       return;
     }
     if (isEditingNameState) {
-        // When finishing edit, if there's an unsaved change (because of the name change), save it.
-        if (currentProject && currentProject.name !== (document.getElementById('projectNameInput') as HTMLInputElement)?.value) {
-            await performSave(true);
-        }
-    } else {
-        // When starting edit, update project name directly
-        if(currentProject) {
-            setCurrentProject(prev => prev ? { ...prev, name: (document.getElementById('projectNameInput') as HTMLInputElement)?.value ?? prev.name } : null);
+        // When finishing edit, get the new name and call the change handler
+        const inputElement = document.getElementById('projectNameInput') as HTMLInputElement;
+        const newName = inputElement?.value.trim();
+        if (newName && currentProject && newName !== currentProject.name) {
+            await handleProjectNameChange(newName);
         }
     }
     setIsEditingNameState(!isEditingNameState);
-  }, [isReadOnlyView, isEditingNameState, currentProject, performSave, toast]);
+  }, [isReadOnlyView, isEditingNameState, currentProject, handleProjectNameChange, toast]);
 
   const confirmDeleteProject = useCallback(async () => {
     if (isReadOnlyView || !currentProject) return;
@@ -501,27 +507,31 @@ function ProjectPageContent() {
 
     const newFileSystemRoots = addNodeToTreeRecursive(currentProject.fileSystemRoots, parentIdForNewItem, newNode);
     
-    // Update state immediately for responsiveness
-    setCurrentProject(prev => prev ? {...prev, fileSystemRoots: newFileSystemRoots} : null);
-
-    await performSave(true); // isStructuralChange = true
+    const projectWithNewNode = { ...currentProject, fileSystemRoots: newFileSystemRoots };
     
-    setSelectedFileNodeId(newNode.id); 
+    // Construct the final state to be saved
+    const constructedProject = constructProjectDataToSave(projectWithNewNode);
+    if (!constructedProject) return;
+
+    await performSave(constructedProject, true); // isStructuralChange = true
+    
+    setProjectSearchTerm(""); // Clear search to ensure new item is visible
+    setSelectedFileNodeId(newNode.id); // Select the new node
     setIsNewItemDialogOpen(false);
     setNewItemType(null);
-  }, [isReadOnlyView, currentProject, newItemName, newItemType, parentIdForNewItem, performSave]);
+  }, [isReadOnlyView, currentProject, newItemName, newItemType, parentIdForNewItem, performSave, constructProjectDataToSave]);
 
   const handleNodeSelectedInExplorer = useCallback(async (selectedNode: FileSystemNode | null) => {
-    // Only save if there are pending changes.
-    if (saveStatus === 'unsaved') {
-      await performSave();
+    if (saveStatus === 'unsaved' && currentProject) {
+        const constructedProject = constructProjectDataToSave(currentProject);
+        if (constructedProject) {
+            await performSave(constructedProject, false);
+        }
     }
     
-    //nothing just to fixsomwthng
-
     const newSelectedNodeId = selectedNode ? selectedNode.id : null;
     setSelectedFileNodeId(newSelectedNodeId);
-  }, [saveStatus, performSave]);
+  }, [saveStatus, performSave, currentProject, constructProjectDataToSave]);
 
   const handleDeleteNodeRequest = useCallback((nodeId: string) => {
     if (isReadOnlyView) {
@@ -536,19 +546,21 @@ function ProjectPageContent() {
 
     const nodeBeingDeleted = findNodeByIdRecursive(currentProject.fileSystemRoots, nodeToDeleteId);
     const newFileSystemRoots = deleteNodeFromTreeRecursive(currentProject.fileSystemRoots, nodeToDeleteId);
+    
+    const projectWithDeletedNode = { ...currentProject, fileSystemRoots: newFileSystemRoots };
 
     if (selectedFileNodeId === nodeToDeleteId) {
         setSelectedFileNodeId(null); 
     }
     
-    // Update state immediately
-    setCurrentProject(prev => prev ? {...prev, fileSystemRoots: newFileSystemRoots} : null);
+    const constructedProject = constructProjectDataToSave(projectWithDeletedNode);
+    if (!constructedProject) return;
 
-    await performSave(true); // isStructuralChange = true
+    await performSave(constructedProject, true); // isStructuralChange = true
 
     toast({ title: "Item Deleted", description: `"${nodeBeingDeleted?.name || 'Item'}" deleted.` });
     setNodeToDeleteId(null);
-  }, [nodeToDeleteId, selectedFileNodeId, currentProject, performSave, toast, isReadOnlyView]);
+  }, [nodeToDeleteId, selectedFileNodeId, currentProject, performSave, toast, isReadOnlyView, constructProjectDataToSave]);
 
   const onAddFileToFolderCallback = useCallback((folderId: string | null) => {
     handleOpenNewItemDialogRef.current('file', folderId);
@@ -578,9 +590,13 @@ function ProjectPageContent() {
     }
     
     const newFileSystemRoots = addNodeToTargetInTree(treeWithoutDraggedNode, targetFolderId, removedNode);
-    setCurrentProject(prev => prev ? {...prev, fileSystemRoots: newFileSystemRoots} : null);
-    await performSave(true); // isStructuralChange = true
-  }, [isReadOnlyView, currentProject, performSave, toast]);
+    
+    const projectWithMovedNode = { ...currentProject, fileSystemRoots: newFileSystemRoots };
+    const constructedProject = constructProjectDataToSave(projectWithMovedNode);
+    if (!constructedProject) return;
+
+    await performSave(constructedProject, true); // isStructuralChange = true
+  }, [isReadOnlyView, currentProject, performSave, toast, constructProjectDataToSave]);
 
   const toastAlreadyShownRef = useRef(false); 
   useEffect(() => {
@@ -666,22 +682,10 @@ function ProjectPageContent() {
               <Input
                 id="projectNameInput"
                 defaultValue={currentProject.name}
-                onBlur={(e) => {
-                    const newName = e.target.value.trim();
-                    if (newName && newName !== currentProject.name) {
-                        setCurrentProject(prev => prev ? {...prev, name: newName} : null);
-                        handleProjectNameChange();
-                    }
-                    handleNameEditToggle();
-                }}
+                onBlur={handleNameEditToggle}
                 onKeyDown={(e) => {
                     if (e.key === 'Enter') {
-                        const newName = e.currentTarget.value.trim();
-                        if (newName && newName !== currentProject.name) {
-                             setCurrentProject(prev => prev ? {...prev, name: newName} : null);
-                             handleProjectNameChange();
-                        }
-                        handleNameEditToggle();
+                        e.currentTarget.blur();
                     }
                 }}
                 className="h-9 text-lg font-semibold max-w-[150px] sm:max-w-xs"
@@ -754,7 +758,7 @@ function ProjectPageContent() {
                         <Button
                             variant="default"
                             size="sm"
-                            onClick={() => performSave()}
+                            onClick={handleManualSave}
                             disabled={saveStatus !== 'unsaved'}
                             className="px-3"
                         >
@@ -766,7 +770,7 @@ function ProjectPageContent() {
                             ) : saveStatus === 'synced' ? (
                                 <>
                                     <CheckCircle2 className="mr-2 h-4 w-4" />
-                                    Saved
+                                    Synced
                                 </>
                             ) : (
                                 <>
@@ -777,7 +781,7 @@ function ProjectPageContent() {
                         </Button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom">
-                        <p>{saveStatus === 'unsaved' ? 'You have unsaved changes' : 'All changes saved'}</p>
+                        <p>{saveStatus === 'unsaved' ? 'You have unsaved changes' : 'All changes are saved'}</p>
                     </TooltipContent>
                 </Tooltip>
               </TooltipProvider>
