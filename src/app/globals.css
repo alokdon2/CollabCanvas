@@ -174,6 +174,28 @@
     --input: 120 100% 15%;
     --ring: 120 100% 75%;
   }
+  
+  .theme-sakura {
+    --background: 300 100% 99%; /* very light pink */
+    --foreground: 274 25% 25%; /* dark purple */
+    --card: 300 100% 99%;
+    --card-foreground: 274 25% 25%;
+    --popover: 300 100% 99%;
+    --popover-foreground: 274 25% 25%;
+    --primary: 330 85% 65%; /* sakura pink */
+    --primary-foreground: 274 25% 15%; /* darker purple for text on pink */
+    --secondary: 300 50% 95%; /* lighter lavender */
+    --secondary-foreground: 274 25% 25%;
+    --muted: 300 50% 95%;
+    --muted-foreground: 274 15% 55%;
+    --accent: 270 90% 70%; /* vibrant lavender */
+    --accent-foreground: 300 100% 99%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 300 30% 90%;
+    --input: 300 30% 90%;
+    --ring: 330 85% 65%;
+  }
 
 }
 
@@ -396,6 +418,7 @@
     
 
   
+
 
 
 

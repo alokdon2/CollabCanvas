@@ -3,8 +3,8 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
-const THEMES = ['light', 'dark', 'midnight', 'latte', 'matrix'] as const;
-const THEME_CLASSES = ['light', 'dark', 'theme-midnight', 'theme-latte', 'theme-matrix'];
+const THEMES = ['light', 'dark', 'midnight', 'latte', 'matrix', 'sakura'] as const;
+const THEME_CLASSES = ['light', 'dark', 'theme-midnight', 'theme-latte', 'theme-matrix', 'theme-sakura'];
 
 export type Theme = (typeof THEMES)[number] | 'system';
 
@@ -70,6 +70,9 @@ export function ThemeProvider({
             break;
         case 'matrix':
             root.classList.add('theme-matrix');
+            break;
+        case 'sakura':
+            root.classList.add('theme-sakura');
             break;
         case 'light':
         default:
