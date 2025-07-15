@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import type { FileSystemNode } from "@/lib/types";
 import { FileNodeItem } from "./FileNodeItem";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -16,7 +16,24 @@ interface FileExplorerProps {
   selectedNodeId: string | null; 
   onMoveNode: (draggedNodeId: string, targetFolderId: string | null) => void;
   isReadOnly?: boolean;
+  searchTerm?: string;
 }
+
+const getAllFolderIds = (nodes: FileSystemNode[]): Set<string> => {
+    const ids = new Set<string>();
+    const traverse = (nodesToScan: FileSystemNode[]) => {
+        nodesToScan.forEach(node => {
+            if (node.type === 'folder') {
+                ids.add(node.id);
+                if (node.children) {
+                    traverse(node.children);
+                }
+            }
+        });
+    };
+    traverse(nodes);
+    return ids;
+};
 
 export function FileExplorer({ 
     nodes, 
@@ -27,9 +44,17 @@ export function FileExplorer({
     selectedNodeId,
     onMoveNode, 
     isReadOnly = false,
+    searchTerm = "",
 }: FileExplorerProps) {
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
   const [isRootDragOver, setIsRootDragOver] = useState(false);
+
+  useEffect(() => {
+    if (searchTerm) {
+      // If there's a search term, expand all folders to show the results
+      setExpandedFolders(getAllFolderIds(nodes));
+    }
+  }, [searchTerm, nodes]);
 
   const handleToggleExpand = useCallback((nodeId: string) => {
     setExpandedFolders((prev) => {
@@ -117,8 +142,8 @@ export function FileExplorer({
             renderNodes(nodes, 0)
           ) : (
             <p className="p-4 text-sm text-muted-foreground text-center">
-              No files or folders.
-              {!isReadOnly && <><br />Use the '+' in the top bar to add items.</>}
+              {searchTerm ? 'No results found.' : 'No files or folders.'}
+              {!isReadOnly && !searchTerm && <><br />Use the '+' in the top bar to add items.</>}
             </p>
           )}
         </div>
@@ -126,5 +151,7 @@ export function FileExplorer({
     </div>
   );
 }
+
+    
 
     

@@ -187,6 +187,28 @@
     --tw-prose-tbody: hsl(var(--foreground));
   }
 
+  /* START: Code block and inline code specific styles */
+  /* This is for inline code like `const x = 1;` */
+  .prose code:not(pre code) {
+    @apply rounded bg-muted px-[0.4rem] py-[0.2rem] font-mono text-sm font-semibold text-accent;
+  }
+  
+  /* This is for the <pre> tag that wraps a code block */
+  .prose pre {
+    @apply font-mono text-sm bg-muted text-foreground rounded-lg p-4 overflow-x-auto;
+    white-space: pre-wrap; /* This is crucial for preserving whitespace and newlines */
+    word-break: break-all; /* Helps prevent overflow with long strings */
+  }
+
+  /* This is for the <code> tag inside a <pre> tag */
+  .prose pre code.hljs {
+    @apply !bg-transparent p-0; /* Override prose pre background if hljs provides its own */
+    white-space: inherit; /* Inherit whitespace handling from parent <pre> */
+    color: inherit;
+  }
+  /* END: Code block styles */
+
+
   /* TipTap Table specific styles */
   .ProseMirror table {
     border-collapse: collapse;
@@ -240,12 +262,9 @@
     outline: 3px solid hsl(var(--primary));
   }
 
-  /* Ensure code blocks in prose use the hljs styles */
-  .prose pre code.hljs {
-    @apply !bg-transparent p-0; /* Override prose pre background if hljs provides its own */
-  }
+  /* Ensure pre tag also has rounded corners */
   .prose pre {
-      @apply rounded-md; /* Ensure pre tag also has rounded corners */
+      @apply rounded-md;
   }
 
   /* Ensure Excalidraw fits its container */
@@ -300,9 +319,34 @@
    .excalidraw-wrapper .excalidraw .App-menu_bottom .App-menu__dialog [aria-label^="Excalidraw"] {
        display: none !important;
    }
+
+  /* Minimal Scrollbar Styling */
+  /* For Webkit browsers (Chrome, Safari, Edge) */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: hsl(var(--muted) / 0.2);
+    border-radius: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--primary) / 0.4);
+    border-radius: 10px;
+    border: 1px solid hsl(var(--background) / 0.5);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--primary) / 0.7);
+  }
+
+  /* For Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--primary) / 0.4) hsl(var(--muted) / 0.2);
+  }
 }
-
-
     
 
   
+
+

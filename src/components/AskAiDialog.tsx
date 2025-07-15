@@ -11,7 +11,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Loader2, Brain, Sparkles } from "lucide-react";
@@ -103,10 +102,10 @@ export function AskAiDialog({ isOpen, onOpenChange, onInsertResponse, initialQue
               <Alert>
                 <Sparkles className="h-4 w-4" />
                 <AlertTitle>AI Response</AlertTitle>
-                <AlertDescription>
-                  <ScrollArea className="max-h-[200px] mt-2 rounded-md border bg-muted/30 p-2">
-                    <div className="whitespace-pre-wrap text-sm">{aiResult.aiResponse}</div>
-                  </ScrollArea>
+                <AlertDescription
+                  className="mt-2 max-h-[250px] w-full overflow-y-auto rounded-md border bg-muted/50 p-2"
+                >
+                  <pre className="whitespace-pre-wrap text-sm font-sans">{aiResult.aiResponse}</pre>
                 </AlertDescription>
               </Alert>
               {aiResult.explanation && (
