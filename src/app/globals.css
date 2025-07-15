@@ -74,7 +74,6 @@
     --border: 214.3 31.8% 91.4%;
     --input: 214.3 31.8% 91.4%;
     --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
@@ -346,6 +345,41 @@
     border-radius: var(--radius);
     overflow: hidden; /* To ensure children respect border-radius */
   }
+
+  /* START: Sakura Theme Petal Animation */
+  @keyframes fall {
+    0% {
+      opacity: 1;
+      transform: translate(0vw, -10vh) rotate(0deg);
+    }
+    100% {
+      opacity: 0.2;
+      transform: translate(10vw, 110vh) rotate(60deg);
+    }
+  }
+
+  .theme-sakura body:before,
+  .theme-sakura body:after {
+    content: '';
+    position: fixed;
+    top: -10vh;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="1" fill="hsl(330, 100%, 90%)" /></svg>'), url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="0.5" fill="hsl(300, 100%, 95%)" /></svg>');
+    background-repeat: repeat;
+    background-size: 300px 300px, 150px 150px;
+    animation: fall 30s linear infinite;
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  .theme-sakura body:after {
+    left: 5vw;
+    animation-delay: -15s;
+    background-size: 200px 200px, 100px 100px;
+  }
+  /* END: Sakura Theme Petal Animation */
 }
 
 /* TipTap Placeholder styles - Moved to @layer utilities for higher precedence */
@@ -418,6 +452,7 @@
     
 
   
+
 
 
 
