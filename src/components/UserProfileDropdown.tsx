@@ -67,14 +67,14 @@ export function UserProfileDropdown() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
-          <DropdownMenuItem asChild disabled>
-            <Link href="/profile"> {/* Placeholder link */}
+          <DropdownMenuItem asChild>
+            <Link href="/profile"> 
               <User className="mr-2 h-4 w-4" />
               <span>Profile</span>
             </Link>
           </DropdownMenuItem>
-          <DropdownMenuItem asChild disabled>
-            <Link href="/settings"> {/* Placeholder link */}
+          <DropdownMenuItem asChild>
+            <Link href="/settings"> 
               <Settings className="mr-2 h-4 w-4" />
               <span>Settings</span>
             </Link>
