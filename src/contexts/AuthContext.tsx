@@ -10,8 +10,10 @@ import {
   createUserWithEmailAndPassword,
   signOut,
   AuthError,
+  GoogleAuthProvider,
+  signInWithPopup,
 } from 'firebase/auth';
-import { auth } from '@/lib/firebase'; // Assuming your firebase init exports 'auth'
+import { auth } from '@/lib/firebase';
 import { useRouter } from 'next/navigation';
 
 interface AuthContextType {
@@ -20,10 +22,13 @@ interface AuthContextType {
   error: AuthError | null;
   signInWithEmail: (email: string, pass: string) => Promise<void>;
   signUpWithEmail: (email: string, pass: string) => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
   signOutUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const googleProvider = new GoogleAuthProvider();
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -44,7 +49,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setError(null);
     try {
       await signInWithEmailAndPassword(auth, email, pass);
-      // onAuthStateChanged will handle setting the user
     } catch (e) {
       setError(e as AuthError);
     } finally {
@@ -57,7 +61,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setError(null);
     try {
       await createUserWithEmailAndPassword(auth, email, pass);
-      // onAuthStateChanged will handle setting the user
+    } catch (e) {
+      setError(e as AuthError);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const signInWithGoogle = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      await signInWithPopup(auth, googleProvider);
     } catch (e) {
       setError(e as AuthError);
     } finally {
@@ -70,8 +85,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setError(null);
     try {
       await signOut(auth);
-      setUser(null); // Explicitly set user to null
-      router.push('/auth/login'); // Redirect to login after sign out
+      setUser(null);
+      router.push('/auth/login');
     } catch (e) {
       setError(e as AuthError);
     } finally {
@@ -87,6 +102,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         error,
         signInWithEmail,
         signUpWithEmail,
+        signInWithGoogle,
         signOutUser,
       }}
     >

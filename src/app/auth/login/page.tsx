@@ -15,7 +15,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { useEffect } from 'react'; // Added this line
+import { useEffect } from 'react';
 
 const loginSchema = z.object({
   email: z.string().email({ message: "Invalid email address." }),
@@ -24,8 +24,18 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
+const GoogleIcon = () => (
+  <svg className="mr-2 h-4 w-4" viewBox="0 0 48 48">
+    <path fill="#FFC107" d="M43.611 20.083H42V20H24v8h11.303c-1.649 4.657-6.08 8-11.303 8-6.627 0-12-5.373-12-12s5.373-12 12-12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 12.955 4 4 12.955 4 24s8.955 20 20 20 20-8.955 20-20c0-1.341-.138-2.65-.389-3.917z" />
+    <path fill="#FF3D00" d="M6.306 14.691l6.571 4.819C14.655 15.108 18.961 12 24 12c3.059 0 5.842 1.154 7.961 3.039l5.657-5.657C34.046 6.053 29.268 4 24 4 16.318 4 9.656 8.337 6.306 14.691z" />
+    <path fill="#4CAF50" d="M24 44c5.166 0 9.86-1.977 13.409-5.192l-6.19-5.238A8 8 0 0 1 24 36c-5.202 0-9.619-3.317-11.283-7.946l-6.522 5.025C9.505 39.556 16.227 44 24 44z" />
+    <path fill="#1976D2" d="M43.611 20.083H42V20H24v8h11.303c-.792 2.237-2.231 4.166-4.087 5.571l6.19 5.238C42.022 35.153 44 30.024 44 24c0-1.341-.138-2.65-.389-3.917z" />
+  </svg>
+);
+
+
 export default function LoginPage() {
-  const { signInWithEmail, loading: authLoading, error: authError } = useAuth();
+  const { signInWithEmail, signInWithGoogle, loading: authLoading, error: authError } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -41,8 +51,7 @@ export default function LoginPage() {
     await signInWithEmail(data.email, data.password);
   }
 
-  // Effect to handle redirection and error toasts after auth attempt
-  const { user, loading: userLoading } = useAuth(); // get user specifically for redirect logic
+  const { user, loading: userLoading } = useAuth();
   useEffect(() => {
     if (authError) {
       toast({
@@ -50,12 +59,12 @@ export default function LoginPage() {
         description: authError.message || "An unexpected error occurred.",
         variant: "destructive",
       });
-    } else if (!authLoading && !userLoading && user) { // Check user after loading states are false
+    } else if (!authLoading && !userLoading && user) {
         toast({
             title: "Login Successful",
             description: "Welcome back!",
         });
-        router.push("/"); // Redirect to dashboard
+        router.push("/");
     }
   }, [authError, user, authLoading, userLoading, router, toast]);
 
@@ -101,21 +110,35 @@ export default function LoginPage() {
                   </FormItem>
                 )}
               />
-            </CardContent>
-            <CardFooter className="flex flex-col gap-4">
-              <Button type="submit" className="w-full" disabled={authLoading}>
+              <Button type="submit" className="w-full mt-2" disabled={authLoading}>
                 {authLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Sign In
               </Button>
-              <p className="text-center text-sm text-muted-foreground">
-                Don&apos;t have an account?{" "}
-                <Link href="/auth/signup" className="font-medium text-primary hover:underline">
-                  Sign up
-                </Link>
-              </p>
-            </CardFooter>
+            </CardContent>
           </form>
         </Form>
+         <div className="relative mb-4">
+            <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-background px-2 text-muted-foreground">
+                Or continue with
+                </span>
+            </div>
+        </div>
+        <CardFooter className="flex flex-col gap-4">
+            <Button variant="outline" className="w-full" onClick={signInWithGoogle} disabled={authLoading}>
+              {authLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <GoogleIcon />}
+              Sign in with Google
+            </Button>
+            <p className="text-center text-sm text-muted-foreground">
+            Don&apos;t have an account?{" "}
+            <Link href="/auth/signup" className="font-medium text-primary hover:underline">
+                Sign up
+            </Link>
+            </p>
+        </CardFooter>
       </Card>
     </div>
   );
