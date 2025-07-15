@@ -391,6 +391,35 @@
     pointer-events: none;
   }
   /* END: Straw Hat Theme Background Pattern */
+
+  /* START: Matrix Theme Digital Rain Animation */
+  @keyframes matrix-rain {
+    from { background-position: 0 0; }
+    to { background-position: 0 100vh; }
+  }
+
+  .theme-matrix body:before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-image: 
+      repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 50px,
+        hsla(var(--foreground), 0.1) 50px,
+        hsla(var(--foreground), 0.1) 51px
+      );
+    background-size: 1px 1px;
+    animation: matrix-rain 2s linear infinite;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.5;
+  }
+  /* END: Matrix Theme Digital Rain Animation */
 }
 
 /* TipTap Placeholder styles - Moved to @layer utilities for higher precedence */
@@ -463,6 +492,7 @@
     
 
   
+
 
 
 
