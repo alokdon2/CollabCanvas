@@ -6,7 +6,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 const THEMES = ['light', 'midnight', 'latte', 'matrix', 'sakura', 'strawhat'] as const;
 const THEME_CLASSES = ['theme-midnight', 'theme-latte', 'theme-matrix', 'theme-sakura', 'theme-strawhat', 'dark'];
 
-export type Theme = (typeof THEMES)[number] | 'system';
+export type Theme = (typeof THEMES)[number];
 
 interface ThemeProviderProps {
   children: ReactNode;
@@ -20,7 +20,7 @@ interface ThemeProviderState {
 }
 
 const initialState: ThemeProviderState = {
-  theme: "system",
+  theme: "light",
   setTheme: () => null,
 };
 
@@ -28,7 +28,7 @@ const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 
 export function ThemeProvider({
   children,
-  defaultTheme = "system",
+  defaultTheme = "light",
   storageKey = "collabcanvas-theme",
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() => {
@@ -46,28 +46,15 @@ export function ThemeProvider({
   useEffect(() => {
     const root = window.document.documentElement;
     
-    // Remove all possible theme classes first to ensure a clean slate
     root.classList.remove(...THEME_CLASSES);
     
-    // Determine the effective theme that will be applied
-    let effectiveThemeName: (typeof THEMES)[number];
-    if (theme === "system") {
-      const systemIsDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      // Default system dark to midnight, otherwise light
-      effectiveThemeName = systemIsDark ? "midnight" : "light";
-    } else {
-      effectiveThemeName = theme;
-    }
-
     // Add the specific theme class
-    const themeClassName = `theme-${effectiveThemeName}`;
-    if (effectiveThemeName !== 'light') { // 'light' is the default, no class needed
+    const themeClassName = `theme-${theme}`;
+    if (theme !== 'light') { // 'light' is the default, no class needed
       root.classList.add(themeClassName);
     }
     
-    // Also add the generic 'dark' class for themes that are dark in nature
-    // This helps with broad component compatibility (e.g., shadcn's prose-invert)
-    if (['midnight', 'matrix'].includes(effectiveThemeName)) {
+    if (['midnight', 'matrix'].includes(theme)) {
         root.classList.add('dark');
     }
     

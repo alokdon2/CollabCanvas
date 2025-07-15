@@ -38,7 +38,7 @@ export default function RootLayout({
         <AuthProvider>
           <ProjectProvider>
             <ThemeProvider
-              defaultTheme="system"
+              defaultTheme="light"
               storageKey="collabcanvas-theme"
             >
               {children}
