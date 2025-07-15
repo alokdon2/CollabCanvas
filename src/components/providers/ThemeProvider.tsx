@@ -46,44 +46,28 @@ export function ThemeProvider({
   useEffect(() => {
     const root = window.document.documentElement;
     
-    // Remove all possible theme classes
+    // Remove all possible theme classes first to ensure a clean slate
     root.classList.remove(...THEME_CLASSES);
     
-    // Determine the effective theme
-    let effectiveTheme: (typeof THEMES)[number];
+    // Determine the effective theme that will be applied
+    let effectiveThemeName: (typeof THEMES)[number];
     if (theme === "system") {
       const systemIsDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      // Default system dark to midnight
-      effectiveTheme = systemIsDark ? "midnight" : "light";
+      // Default system dark to midnight, otherwise light
+      effectiveThemeName = systemIsDark ? "midnight" : "light";
     } else {
-      effectiveTheme = theme;
+      effectiveThemeName = theme;
     }
 
-    // Add the appropriate theme class
-    switch(effectiveTheme) {
-        case 'midnight':
-            root.classList.add('theme-midnight');
-            break;
-        case 'latte':
-            root.classList.add('theme-latte');
-            break;
-        case 'matrix':
-            root.classList.add('theme-matrix');
-            break;
-        case 'sakura':
-            root.classList.add('theme-sakura');
-            break;
-        case 'strawhat':
-            root.classList.add('theme-strawhat');
-            break;
-        case 'light':
-        default:
-            // No class needed for default light theme
-            break;
+    // Add the specific theme class
+    const themeClassName = `theme-${effectiveThemeName}`;
+    if (effectiveThemeName !== 'light') { // 'light' is the default, no class needed
+      root.classList.add(themeClassName);
     }
     
-    // Add 'dark' class for dark-like themes for shadcn component compatibility
-    if (['midnight', 'matrix'].includes(effectiveTheme)) {
+    // Also add the generic 'dark' class for themes that are dark in nature
+    // This helps with broad component compatibility (e.g., shadcn's prose-invert)
+    if (['midnight', 'matrix'].includes(effectiveThemeName)) {
         root.classList.add('dark');
     }
     

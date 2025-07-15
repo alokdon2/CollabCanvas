@@ -352,8 +352,8 @@
     }
   }
 
-  .theme-sakura body:before,
-  .theme-sakura body:after {
+  html.theme-sakura body:before,
+  html.theme-sakura body:after {
     content: '';
     position: fixed;
     top: -10vh;
@@ -368,7 +368,7 @@
     pointer-events: none;
   }
 
-  .theme-sakura body:after {
+  html.theme-sakura body:after {
     left: 5vw;
     animation-delay: -15s;
     background-size: 200px 200px, 100px 100px;
@@ -376,7 +376,7 @@
   /* END: Sakura Theme Petal Animation */
   
   /* START: Straw Hat Theme Background Pattern */
-  .theme-strawhat body:before {
+  html.theme-strawhat body:before {
     content: '';
     position: fixed;
     top: 0;
@@ -398,7 +398,7 @@
     to { background-position: 0 100vh; }
   }
 
-  .theme-matrix body:before {
+  html.theme-matrix body:before {
     content: '';
     position: fixed;
     top: 0;
@@ -492,6 +492,7 @@
     
 
   
+
 
 
 
