@@ -31,7 +31,11 @@ export default function ProfilePage() {
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
-    // Use `useEffect` to safely update form values when user loads
+    // Set default values to prevent uncontrolled -> controlled error
+    defaultValues: {
+      displayName: '',
+      photoURL: '',
+    },
   });
 
   useEffect(() => {
