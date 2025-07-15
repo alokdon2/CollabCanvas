@@ -1,13 +1,13 @@
 
 "use client";
 
-import { useEffect, useState, useCallback, useRef, Suspense } from "react";
+import { useEffect, useState, useCallback, useRef, Suspense, useMemo } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { Whiteboard } from "@/components/Whiteboard";
 import type { Project, WhiteboardData, FileSystemNode, ExcalidrawAppState } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderTree, Loader2, PanelLeftOpen, PlusCircle, FilePlus2, FolderPlus, Info, CheckCircle2, AlertCircle, Save } from "lucide-react";
+import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderTree, Loader2, PanelLeftOpen, PlusCircle, FilePlus2, FolderPlus, Info, CheckCircle2, AlertCircle, Save, Search } from "lucide-react";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -160,6 +160,34 @@ const findParentId = (nodes: FileSystemNode[], childId: string, parentId: string
     return undefined; 
 };
 
+// Search filtering logic
+const filterFileSystem = (nodes: FileSystemNode[], searchTerm: string): FileSystemNode[] => {
+    if (!searchTerm) {
+        return nodes;
+    }
+    const lowercasedSearchTerm = searchTerm.toLowerCase();
+
+    const searchNode = (node: FileSystemNode): FileSystemNode | null => {
+        // Check if children match
+        const filteredChildren = node.children ? filterFileSystem(node.children, searchTerm) : undefined;
+        const hasMatchingChildren = filteredChildren && filteredChildren.length > 0;
+
+        // Check if current node name matches
+        const nameMatches = node.name.toLowerCase().includes(lowercasedSearchTerm);
+
+        // Check if current node content matches
+        const contentMatches = node.type === 'file' && node.textContent ? node.textContent.replace(/<[^>]+>/g, '').toLowerCase().includes(lowercasedSearchTerm) : false;
+
+        if (nameMatches || contentMatches || hasMatchingChildren) {
+            return { ...node, children: filteredChildren };
+        }
+
+        return null;
+    };
+
+    return nodes.map(searchNode).filter(Boolean) as FileSystemNode[];
+};
+
 
 function ProjectPageContent() {
   const router = useRouter();
@@ -194,6 +222,7 @@ function ProjectPageContent() {
   const [newItemError, setNewItemError] = useState("");
   const [parentIdForNewItem, setParentIdForNewItem] = useState<string | null>(null);
   const [nodeToDeleteId, setNodeToDeleteId] = useState<string | null>(null);
+  const [projectSearchTerm, setProjectSearchTerm] = useState("");
 
   // --- Save Mechanism States ---
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('synced');
@@ -551,26 +580,31 @@ function ProjectPageContent() {
     await performSave(true); // isStructuralChange = true
   }, [isReadOnlyView, currentProject, performSave, toast]);
 
+  const toastAlreadyShownRef = useRef(false); 
   useEffect(() => {
     if (!currentProject || !authUser || !mounted || isLoadingProject) return;
     const currentIsSharedParam = searchParams.get('shared') === 'true';
-    let effectiveReadOnly = currentIsSharedParam;
-    if (!currentIsSharedParam && currentProject.ownerId && authUser.uid !== currentProject.ownerId) {
-      effectiveReadOnly = true;
-    }
+    // An owner should never be in read-only mode, even with a shared link
+    let effectiveReadOnly = currentIsSharedParam && authUser.uid !== currentProject.ownerId;
+    
     if (effectiveReadOnly !== isReadOnlyView) {
       setIsReadOnlyView(effectiveReadOnly);
     }
+
     if (effectiveReadOnly && mounted && !isLoadingProject && !toastAlreadyShownRef.current && currentProject.ownerId) {
       toast({
-        title: currentIsSharedParam ? "Read-Only Mode" : "Viewing Others' Project",
-        description: currentIsSharedParam ? "You are viewing a shared project. Changes cannot be saved." : "This project is owned by another user. You are in read-only mode.",
+        title: "Read-Only Mode",
+        description: "You are viewing a shared project. Changes cannot be saved.",
         duration: 5000
       });
       toastAlreadyShownRef.current = true;
     }
   }, [searchParams, toast, mounted, isReadOnlyView, currentProject, authUser, isLoadingProject]);
-  const toastAlreadyShownRef = useRef(false); 
+  
+  const filteredFileSystemNodes = useMemo(() => {
+    if (!currentProject) return [];
+    return filterFileSystem(currentProject.fileSystemRoots, projectSearchTerm);
+  }, [currentProject, projectSearchTerm]);
 
 
   // --- Render Logic ---
@@ -611,16 +645,16 @@ function ProjectPageContent() {
   const editorKey = `editor-${selectedFileNodeId || 'project-root'}`;
   const whiteboardKey = `whiteboard-${selectedFileNodeId || 'project-root'}`;
 
-  const fileSystemNodes = currentProject.fileSystemRoots || [];
-  const hasFileSystemRoots = fileSystemNodes.length > 0;
-  const showContentPlaceholder = !selectedFileNodeId && hasFileSystemRoots;
-  const showCreateFilePrompt = !selectedFileNodeId && !hasFileSystemRoots;
+  const hasFileSystemRoots = currentProject.fileSystemRoots.length > 0;
+  const showContentPlaceholder = !selectedFileNodeId && hasFileSystemRoots && !projectSearchTerm;
+  const showCreateFilePrompt = !selectedFileNodeId && !hasFileSystemRoots && !projectSearchTerm;
+  const showSearchResultsInfo = !!projectSearchTerm;
 
 
   return (
     <div className="flex h-screen flex-col fixed inset-0 pt-14">
        <header className="sticky top-0 z-40 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 h-14">
-        <div className="container flex h-full items-center px-4 sm:px-6 lg:px-8">
+        <div className="container flex h-full items-center px-4 sm:px-6 lg:px-8 gap-2">
           <Button variant="ghost" size="icon" onClick={() => router.push('/')} className="mr-2" aria-label="Back to dashboard">
             <ArrowLeft className="h-5 w-5" />
           </Button>
@@ -663,13 +697,24 @@ function ProjectPageContent() {
                 </Button>
             )}
           </div>
+          
+          <div className="relative flex-grow max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              type="search"
+              placeholder="Search in project..."
+              className="pl-10 h-9"
+              value={projectSearchTerm}
+              onChange={(e) => setProjectSearchTerm(e.target.value)}
+            />
+          </div>
 
         {!isReadOnlyView && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="px-2">
                 <PlusCircle className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">New Item</span>
+                <span className="hidden sm:inline">New</span>
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
@@ -748,13 +793,13 @@ function ProjectPageContent() {
             </Button>
 
             <div className="flex items-center gap-1 px-2 rounded-md border bg-muted">
-              <Button variant={viewMode === 'editor' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('editor')} aria-label="Editor View" disabled={showContentPlaceholder || (showCreateFilePrompt && isReadOnlyView)}>
+              <Button variant={viewMode === 'editor' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('editor')} aria-label="Editor View" disabled={showContentPlaceholder || (showCreateFilePrompt && isReadOnlyView) || showSearchResultsInfo}>
                 <Edit3 className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Editor</span>
               </Button>
-              <Button variant={viewMode === 'both' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('both')} aria-label="Split View" disabled={showContentPlaceholder || (showCreateFilePrompt && isReadOnlyView)}>
+              <Button variant={viewMode === 'both' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('both')} aria-label="Split View" disabled={showContentPlaceholder || (showCreateFilePrompt && isReadOnlyView) || showSearchResultsInfo}>
                  <Rows className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Both</span>
               </Button>
-              <Button variant={viewMode === 'whiteboard' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('whiteboard')} aria-label="Whiteboard View" disabled={showContentPlaceholder || (showCreateFilePrompt && isReadOnlyView)}>
+              <Button variant={viewMode === 'whiteboard' ? 'secondary' : 'ghost'} size="sm" onClick={() => setViewMode('whiteboard')} aria-label="Whiteboard View" disabled={showContentPlaceholder || (showCreateFilePrompt && isReadOnlyView) || showSearchResultsInfo}>
                 <LayoutDashboard className="h-4 w-4 sm:mr-2" /> <span className="hidden sm:inline">Board</span>
               </Button>
             </div>
@@ -796,7 +841,7 @@ function ProjectPageContent() {
               <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
                 <div className="h-full p-1 sm:p-2 md:p-3">
                   <FileExplorer
-                    nodes={fileSystemNodes}
+                    nodes={filteredFileSystemNodes}
                     onNodeSelect={handleNodeSelectedInExplorer}
                     onDeleteNode={handleDeleteNodeRequest}
                     onAddFileToFolder={onAddFileToFolderCallback}
@@ -804,6 +849,7 @@ function ProjectPageContent() {
                     selectedNodeId={selectedFileNodeId}
                     onMoveNode={handleMoveNode}
                     isReadOnly={isReadOnlyView}
+                    searchTerm={projectSearchTerm}
                   />
                 </div>
               </ResizablePanel>
@@ -811,6 +857,18 @@ function ProjectPageContent() {
             </>
           )}
           <ResizablePanel defaultSize={isExplorerVisible ? 80 : 100} className="flex flex-col">
+            {showSearchResultsInfo && (
+              <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+                <Search className="h-16 w-16 text-muted-foreground mb-4" />
+                <h2 className="text-xl font-semibold mb-2">Project Search Results</h2>
+                <p className="text-muted-foreground">
+                  {filteredFileSystemNodes.length > 0
+                    ? `Found ${filteredFileSystemNodes.length} matching item(s). Select one from the explorer.`
+                    : 'No items match your search.'}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">Clear the search to view content.</p>
+              </div>
+            )}
             {showContentPlaceholder && (
               <div className="flex flex-col items-center justify-center h-full p-4 text-center">
                 <FolderTree className="h-16 w-16 text-muted-foreground mb-4" />
@@ -836,7 +894,7 @@ function ProjectPageContent() {
                  </div>
             )}
 
-            {(!selectedFileNodeId && !showCreateFilePrompt && !showContentPlaceholder) || selectedFileNodeId ? (
+            {(!selectedFileNodeId && !showCreateFilePrompt && !showContentPlaceholder && !showSearchResultsInfo) || (selectedFileNodeId && !showSearchResultsInfo) ? (
                 viewMode === "editor" ? (
                   <div className="h-full p-1 sm:p-2 md:p-3">
                     <RichTextEditor key={editorKey} value={activeTextContent} onChange={handleTextChange} isReadOnly={isReadOnlyView} />
@@ -874,10 +932,10 @@ function ProjectPageContent() {
             <DialogTitle>Create New {newItemType === 'file' ? 'File' : 'Folder'}</DialogTitle>
             <DialogDescription>
               Enter a name for your new {newItemType}.
-              {parentIdForNewItem && fileSystemNodes.length > 0 && findNodeByIdRecursive(fileSystemNodes, parentIdForNewItem) ? 
-                ` It will be created in "${findNodeByIdRecursive(fileSystemNodes, parentIdForNewItem)?.name}".` :
-                 selectedFileNodeId && fileSystemNodes.length > 0 && findNodeByIdRecursive(fileSystemNodes, selectedFileNodeId)?.type === 'folder' ?
-                 ` It will be created in "${findNodeByIdRecursive(fileSystemNodes, selectedFileNodeId)?.name}".` :
+              {parentIdForNewItem && findNodeByIdRecursive(currentProject.fileSystemRoots, parentIdForNewItem) ? 
+                ` It will be created in "${findNodeByIdRecursive(currentProject.fileSystemRoots, parentIdForNewItem)?.name}".` :
+                 selectedFileNodeId && findNodeByIdRecursive(currentProject.fileSystemRoots, selectedFileNodeId)?.type === 'folder' ?
+                 ` It will be created in "${findNodeByIdRecursive(currentProject.fileSystemRoots, selectedFileNodeId)?.name}".` :
                  " It will be created at the root of the project."
               }
             </DialogDescription>
@@ -907,7 +965,7 @@ function ProjectPageContent() {
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently delete the selected item
-              {currentProject && fileSystemNodes && nodeToDeleteId && findNodeByIdRecursive(fileSystemNodes, nodeToDeleteId)?.type === 'folder' && ' and all its contents'}.
+              {currentProject && nodeToDeleteId && findNodeByIdRecursive(currentProject.fileSystemRoots, nodeToDeleteId)?.type === 'folder' && ' and all its contents'}.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -941,6 +999,8 @@ export default function ProjectPage() {
     </Suspense>
   )
 }
+    
+
     
 
     
