@@ -7,7 +7,7 @@ import { RichTextEditor } from "@/components/RichTextEditor";
 import { Whiteboard } from "@/components/Whiteboard";
 import type { Project, WhiteboardData, FileSystemNode, ExcalidrawAppState } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderTree, Loader2, PanelLeftOpen, PlusCircle, FilePlus2, FolderPlus, Info, CheckCircle2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderTree, Loader2, PanelLeftOpen, PlusCircle, FilePlus2, FolderPlus, Info, CheckCircle2, AlertCircle, Save } from "lucide-react";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -55,7 +55,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 
 type ViewMode = "editor" | "whiteboard" | "both";
-type SaveStatus = 'idle' | 'saving' | 'synced' | 'error';
+type SaveStatus = 'unsaved' | 'saving' | 'synced' | 'error';
 
 const DEFAULT_EMPTY_TEXT_CONTENT = "<p></p>";
 const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = {
@@ -179,9 +179,9 @@ function ProjectPageContent() {
 
   // --- Derived States (from currentProject for UI binding, but can be temporarily out of sync before save) ---
   const [editingProjectName, setEditingProjectName] = useState("");
-  const [activeFileSystemRoots, setActiveFileSystemRoots] = useState<FileSystemNode[]>([]);
-  const [projectRootTextContent, setProjectRootTextContent] = useState(DEFAULT_EMPTY_TEXT_CONTENT); // Derived from currentProject
-  const [projectRootWhiteboardData, setProjectRootWhiteboardData] = useState<WhiteboardData>({...DEFAULT_EMPTY_WHITEBOARD_DATA}); // Derived
+  const activeFileSystemRootsRef = useRef<FileSystemNode[]>([]); // Using ref to avoid re-renders
+  const projectRootTextContentRef = useRef(DEFAULT_EMPTY_TEXT_CONTENT);
+  const projectRootWhiteboardDataRef = useRef<WhiteboardData>({...DEFAULT_EMPTY_WHITEBOARD_DATA});
 
   // --- Active Content States (for editor/whiteboard inputs, reflects what user is currently editing) ---
   const [activeTextContent, setActiveTextContent] = useState(DEFAULT_EMPTY_TEXT_CONTENT);
@@ -202,11 +202,8 @@ function ProjectPageContent() {
   const [nodeToDeleteId, setNodeToDeleteId] = useState<string | null>(null);
 
   // --- Save Mechanism States ---
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
-  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isProcessingSnapshotRef = useRef(false);
-
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('synced');
+  
   // --- Initial Load ---
   useEffect(() => {
     setMounted(true);
@@ -220,7 +217,6 @@ function ProjectPageContent() {
         if (projectDataFromDB) {
           setCurrentProject(projectDataFromDB); // This will trigger derived state updates
           setSaveStatus('synced');
-          setLastSyncTime(new Date(projectDataFromDB.updatedAt).toLocaleTimeString());
           setSelectedFileNodeId(null); 
         } else {
           toast({ title: "Error", description: "Project not found.", variant: "destructive" });
@@ -238,7 +234,6 @@ function ProjectPageContent() {
     fetchAndInitializeProject();
 
     return () => {
-        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
         setGlobalProjectNameFromContext(null);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -250,36 +245,24 @@ function ProjectPageContent() {
     if (currentProject) {
       setEditingProjectName(currentProject.name);
       setGlobalProjectNameFromContext(currentProject.name);
-      setActiveFileSystemRoots(ensureNodeContentDefaults(currentProject.fileSystemRoots || []));
-      setProjectRootTextContent(currentProject.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
-      setProjectRootWhiteboardData(
-        currentProject.whiteboardContent 
+      // Update refs instead of state
+      activeFileSystemRootsRef.current = ensureNodeContentDefaults(currentProject.fileSystemRoots || []);
+      projectRootTextContentRef.current = currentProject.textContent || DEFAULT_EMPTY_TEXT_CONTENT;
+      projectRootWhiteboardDataRef.current = currentProject.whiteboardContent 
         ? processSingleWhiteboardData(currentProject.whiteboardContent, 'load') || {...DEFAULT_EMPTY_WHITEBOARD_DATA}
-        : {...DEFAULT_EMPTY_WHITEBOARD_DATA}
-      );
-    }
-  }, [currentProject, setGlobalProjectNameFromContext]);
-
-
-  // --- Sync active editor/whiteboard content based on selection and derived root/file states ---
-  useEffect(() => {
-    if (!currentProject) return; // Ensure currentProject is loaded
-
-    if (selectedFileNodeId) {
-      const node = findNodeByIdRecursive(activeFileSystemRoots, selectedFileNodeId);
+        : {...DEFAULT_EMPTY_WHITEBOARD_DATA};
+      
+      // Trigger a re-sync of the active content based on the updated currentProject
+      const node = selectedFileNodeId ? findNodeByIdRecursive(activeFileSystemRootsRef.current, selectedFileNodeId) : null;
       if (node) {
         setActiveTextContent(node.textContent || DEFAULT_EMPTY_TEXT_CONTENT);
         activeWhiteboardDataRef.current = node.whiteboardContent ? processSingleWhiteboardData(node.whiteboardContent, 'load') || {...DEFAULT_EMPTY_WHITEBOARD_DATA} : {...DEFAULT_EMPTY_WHITEBOARD_DATA};
       } else {
-        setSelectedFileNodeId(null); 
-        setActiveTextContent(projectRootTextContent);
-        activeWhiteboardDataRef.current = {...projectRootWhiteboardData};
+        setActiveTextContent(projectRootTextContentRef.current);
+        activeWhiteboardDataRef.current = {...projectRootWhiteboardDataRef.current};
       }
-    } else {
-      setActiveTextContent(projectRootTextContent);
-      activeWhiteboardDataRef.current = {...projectRootWhiteboardData};
     }
-  }, [selectedFileNodeId, activeFileSystemRoots, projectRootTextContent, projectRootWhiteboardData, currentProject]);
+  }, [currentProject, setGlobalProjectNameFromContext, selectedFileNodeId]);
 
 
   // --- Construct project data for saving ---
@@ -290,24 +273,30 @@ function ProjectPageContent() {
     if (!currentProject) return null;
 
     const nameForSave = projectNameOverride ?? editingProjectName;
-    const currentFileSystemRootsSource = fileSystemRootsArg ?? activeFileSystemRoots;
-    const fileSystemRootsForSaveAttempt = JSON.parse(JSON.stringify(currentFileSystemRootsSource)) as FileSystemNode[];
+    let fileSystemRootsForSaveAttempt = fileSystemRootsArg ?? activeFileSystemRootsRef.current;
 
     let textContentForSave: string;
     let whiteboardContentForSave: WhiteboardData | null;
     let finalModifiedFileSystemRoots: FileSystemNode[];
 
     if (selectedFileNodeId && !fileSystemRootsArg) {
-        finalModifiedFileSystemRoots = replaceNodeInTree(fileSystemRootsForSaveAttempt, selectedFileNodeId, {
-            ...(findNodeByIdRecursive(fileSystemRootsForSaveAttempt, selectedFileNodeId) as FileSystemNode),
-            textContent: activeTextContent,
-            whiteboardContent: activeWhiteboardDataRef.current, // Use ref directly
-        });
-        textContentForSave = currentProject.textContent;
-        whiteboardContentForSave = currentProject.whiteboardContent;
+        const selectedNode = findNodeByIdRecursive(fileSystemRootsForSaveAttempt, selectedFileNodeId);
+        if (selectedNode) {
+            finalModifiedFileSystemRoots = replaceNodeInTree(fileSystemRootsForSaveAttempt, selectedFileNodeId, {
+                ...selectedNode,
+                textContent: activeTextContent,
+                whiteboardContent: activeWhiteboardDataRef.current, 
+            });
+            textContentForSave = projectRootTextContentRef.current;
+            whiteboardContentForSave = projectRootWhiteboardDataRef.current;
+        } else {
+            finalModifiedFileSystemRoots = fileSystemRootsForSaveAttempt;
+            textContentForSave = activeTextContent;
+            whiteboardContentForSave = activeWhiteboardDataRef.current;
+        }
     } else {
         textContentForSave = activeTextContent;
-        whiteboardContentForSave = activeWhiteboardDataRef.current; // Use ref directly
+        whiteboardContentForSave = activeWhiteboardDataRef.current; 
         finalModifiedFileSystemRoots = fileSystemRootsForSaveAttempt;
     }
     
@@ -319,17 +308,17 @@ function ProjectPageContent() {
         fileSystemRoots: finalModifiedFileSystemRoots,
         updatedAt: new Date().toISOString(),
     };
-  }, [currentProject, editingProjectName, activeTextContent, activeFileSystemRoots, selectedFileNodeId]);
+  }, [currentProject, editingProjectName, activeTextContent, selectedFileNodeId]);
 
 
   // --- Perform Save Operation ---
   const performSave = useCallback(async (
     projectNameOverride: string | null = null,
     fileSystemRootsOverride: FileSystemNode[] | null = null
-  ): Promise<Project | null> => {
-    if (isReadOnlyView || !authUser || !currentProject) {
-      console.log("[ProjectPage performSave] In read-only view, no auth user, or no current project. Save skipped.");
-      return null;
+  ) => {
+    if (isReadOnlyView || !authUser || !currentProject || saveStatus === 'saving') {
+      console.log("[ProjectPage performSave] In read-only view, no auth user, no current project, or already saving. Save skipped.");
+      return;
     }
 
     setSaveStatus('saving');
@@ -338,7 +327,7 @@ function ProjectPageContent() {
     if (!projectToSave) {
         console.error("[ProjectPage performSave] constructProjectDataToSave returned null.");
         setSaveStatus('error');
-        return null;
+        return;
     }
     
     const finalProjectDataForFirestore: Project = {
@@ -352,67 +341,24 @@ function ProjectPageContent() {
       
       setCurrentProject(finalProjectDataForFirestore); 
       setSaveStatus('synced');
-      setLastSyncTime(new Date(finalProjectDataForFirestore.updatedAt).toLocaleTimeString());
-      return finalProjectDataForFirestore;
+      toast({ title: "Project Saved", description: "Your changes have been saved to the cloud." });
+
     } catch (error) {
       console.error("[ProjectPage performSave] Failed to save project to Firestore:", error);
       toast({ title: "Save Error", description: `Could not save project: ${(error as Error).message}`, variant: "destructive" });
       setSaveStatus('error');
-      return null;
     }
-  }, [isReadOnlyView, authUser, currentProject, constructProjectDataToSave, toast]);
-
-  // --- Auto-Save useEffect ---
-  useEffect(() => {
-    if (isReadOnlyView || !mounted || isLoadingProject || (saveStatus !== 'idle' && saveStatus !== 'error')) {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      return;
-    }
-
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-
-    saveTimeoutRef.current = setTimeout(async () => {
-      if (isReadOnlyView || saveStatus !== 'idle') { 
-        return;
-      }
-      await performSave(); // Call without overrides for auto-save
-      saveTimeoutRef.current = null;
-    }, 2000);
-
-    return () => {
-      if(saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    };
-  }, [activeTextContent, performSave, isReadOnlyView, mounted, isLoadingProject, saveStatus]);
-
+  }, [isReadOnlyView, authUser, currentProject, constructProjectDataToSave, toast, saveStatus]);
 
   // --- Keyboard shortcut for saving ---
   useEffect(() => {
-    const handleKeyDown = async (event: KeyboardEvent) => {
+    const handleKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key === 's') {
         event.preventDefault();
-        if (isReadOnlyView || !currentProject || saveStatus === 'saving') {
-          toast({
-            title: "Cannot Save",
-            description: isReadOnlyView ? "Project is in read-only mode." : (saveStatus === 'saving' ? "Already saving..." : "Project not ready to save."),
-            variant: "default",
-            duration: 2000,
-          });
+        if (isReadOnlyView || !currentProject || saveStatus === 'saving' || saveStatus === 'synced') {
           return;
         }
-
-        // Clear any pending auto-save timeout
-        if (saveTimeoutRef.current) {
-          clearTimeout(saveTimeoutRef.current);
-          saveTimeoutRef.current = null;
-        }
-        
-        // Manually trigger save
-        await performSave();
-        toast({
-          title: "Project Saved",
-          description: "Your changes have been saved manually.",
-          duration: 2000
-        });
+        performSave();
       }
     };
 
@@ -421,26 +367,26 @@ function ProjectPageContent() {
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isReadOnlyView, currentProject, performSave, toast, saveStatus]);
+  }, [isReadOnlyView, currentProject, performSave, saveStatus]);
 
 
-  // --- User Input Handlers (triggering saveStatus='idle') ---
+  // --- User Input Handlers (triggering 'unsaved' status) ---
   const handleTextChange = useCallback((newText: string) => {
     if (isReadOnlyView) return;
     setActiveTextContent(newText);
-    if (saveStatus !== 'saving') setSaveStatus('idle');
+    if (saveStatus !== 'saving') setSaveStatus('unsaved');
   }, [isReadOnlyView, saveStatus]);
 
   const handleWhiteboardChange = useCallback((newData: WhiteboardData) => {
     if (isReadOnlyView) return;
     activeWhiteboardDataRef.current = newData;
-    if (saveStatus !== 'saving') setSaveStatus('idle');
+    if (saveStatus !== 'saving') setSaveStatus('unsaved');
   }, [isReadOnlyView, saveStatus]);
 
   const handleProjectNameChange = useCallback((newName: string) => {
     if (isReadOnlyView) return;
     setEditingProjectName(newName);
-    if (saveStatus !== 'saving') setSaveStatus('idle');
+    if (saveStatus !== 'saving') setSaveStatus('unsaved');
   }, [isReadOnlyView, saveStatus]);
 
 
@@ -453,13 +399,7 @@ function ProjectPageContent() {
     if (isEditingNameState && currentProject) {
       const newName = editingProjectName.trim();
       if (newName && newName !== currentProject.name) {
-        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-        const savedProject = await performSave(newName, null); 
-        if (savedProject) {
-            toast({title: "Project Renamed", description: `Project name updated to "${newName}".`});
-        } else {
-            setEditingProjectName(currentProject.name); 
-        }
+        await performSave(newName, null); 
       } else if (!newName || newName === currentProject.name) { 
         setEditingProjectName(currentProject.name);
       }
@@ -474,7 +414,6 @@ function ProjectPageContent() {
         return;
     }
     try {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
       await deleteProjectFromFirestore(currentProject.id);
       toast({ title: "Project Deleted", description: `"${currentProject.name}" has been deleted.` });
       router.replace("/");
@@ -503,25 +442,25 @@ function ProjectPageContent() {
   useEffect(() => {
     if (typeof registerTriggerNewFile === 'function') {
       registerTriggerNewFile(() => {
-        const currentActiveNode = selectedFileNodeId ? findNodeByIdRecursive(activeFileSystemRoots, selectedFileNodeId) : null;
+        const currentActiveNode = selectedFileNodeId ? findNodeByIdRecursive(activeFileSystemRootsRef.current, selectedFileNodeId) : null;
         let parentIdToUse: string | null = null;
         if (currentActiveNode) {
-            parentIdToUse = currentActiveNode.type === 'folder' ? currentActiveNode.id : findParentId(activeFileSystemRoots, currentActiveNode.id);
+            parentIdToUse = currentActiveNode.type === 'folder' ? currentActiveNode.id : findParentId(activeFileSystemRootsRef.current, currentActiveNode.id);
         }
         handleOpenNewItemDialogRef.current('file', parentIdToUse);
       });
     }
     if (typeof registerTriggerNewFolder === 'function') {
       registerTriggerNewFolder(() => {
-        const currentActiveNode = selectedFileNodeId ? findNodeByIdRecursive(activeFileSystemRoots, selectedFileNodeId) : null;
+        const currentActiveNode = selectedFileNodeId ? findNodeByIdRecursive(activeFileSystemRootsRef.current, selectedFileNodeId) : null;
         let parentIdToUse: string | null = null;
         if (currentActiveNode) {
-            parentIdToUse = currentActiveNode.type === 'folder' ? currentActiveNode.id : findParentId(activeFileSystemRoots, currentActiveNode.id);
+            parentIdToUse = currentActiveNode.type === 'folder' ? currentActiveNode.id : findParentId(activeFileSystemRootsRef.current, currentActiveNode.id);
         }
         handleOpenNewItemDialogRef.current('folder', parentIdToUse);
       });
     }
-  }, [registerTriggerNewFile, registerTriggerNewFolder, selectedFileNodeId, activeFileSystemRoots]);
+  }, [registerTriggerNewFile, registerTriggerNewFolder, selectedFileNodeId]);
 
   const handleCreateNewItem = useCallback(async () => {
     if (isReadOnlyView || !currentProject || !newItemType) return;
@@ -540,33 +479,23 @@ function ProjectPageContent() {
       ...(newItemType === 'folder' ? { children: [] } : {}),
     };
 
-    const newFileSystemRoots = addNodeToTreeRecursive(activeFileSystemRoots, parentIdForNewItem, newNode);
+    const newFileSystemRoots = addNodeToTreeRecursive(activeFileSystemRootsRef.current, parentIdForNewItem, newNode);
 
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    const savedProject = await performSave(null, newFileSystemRoots); 
+    await performSave(null, newFileSystemRoots); 
     
-    if (savedProject) {
-        // currentProject is updated by performSave. The useEffect deriving activeFileSystemRoots will handle UI update.
-        // We can also set it directly if needed for very immediate feedback, but derived effect is cleaner.
-        setActiveFileSystemRoots(newFileSystemRoots); // Optional: for immediate UI feedback
-        setSelectedFileNodeId(newNode.id); 
-        toast({ title: `${newItemType === 'file' ? 'File' : 'Folder'} Created`, description: `"${newNode.name}" created.`});
-    }
-    // No explicit revert needed for activeFileSystemRoots if save fails, as it's derived from currentProject,
-    // and currentProject wouldn't have been updated with the new node.
+    setSelectedFileNodeId(newNode.id); 
     setIsNewItemDialogOpen(false);
     setNewItemType(null);
-  }, [isReadOnlyView, currentProject, newItemName, newItemType, parentIdForNewItem, performSave, toast, activeFileSystemRoots]);
+  }, [isReadOnlyView, currentProject, newItemName, newItemType, parentIdForNewItem, performSave]);
 
   const handleNodeSelectedInExplorer = useCallback(async (selectedNode: FileSystemNode | null) => {
-    if (saveStatus === 'saving') {
-        toast({ title: "Saving...", description: "Please wait for current changes to save.", duration: 1500});
-        return;
-    }    
+    if (saveStatus === 'unsaved') {
+      await performSave();
+    }
+    
     const newSelectedNodeId = selectedNode ? selectedNode.id : null;
-    if (selectedFileNodeId === newSelectedNodeId) return; 
     setSelectedFileNodeId(newSelectedNodeId);
-  }, [selectedFileNodeId, saveStatus, toast]);
+  }, [saveStatus, performSave]);
 
   const handleDeleteNodeRequest = useCallback((nodeId: string) => {
     if (isReadOnlyView) {
@@ -577,22 +506,19 @@ function ProjectPageContent() {
   }, [isReadOnlyView, toast]);
 
   const confirmDeleteNode = useCallback(async () => {
-    if (isReadOnlyView || !nodeToDeleteId || !currentProject || saveStatus === 'saving') return;
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    if (isReadOnlyView || !nodeToDeleteId || !currentProject) return;
 
-    const nodeBeingDeleted = findNodeByIdRecursive(activeFileSystemRoots, nodeToDeleteId);
-    const newFileSystemRoots = deleteNodeFromTreeRecursive(activeFileSystemRoots, nodeToDeleteId);
+    const nodeBeingDeleted = findNodeByIdRecursive(activeFileSystemRootsRef.current, nodeToDeleteId);
+    const newFileSystemRoots = deleteNodeFromTreeRecursive(activeFileSystemRootsRef.current, nodeToDeleteId);
 
-    const savedProject = await performSave(null, newFileSystemRoots);
-    if (savedProject) {
-        setActiveFileSystemRoots(newFileSystemRoots); // Optional: for immediate UI feedback
-        if (selectedFileNodeId === nodeToDeleteId) {
-            setSelectedFileNodeId(null); 
-        }
-        toast({ title: "Item Deleted", description: `"${nodeBeingDeleted?.name || 'Item'}" deleted.` });
+    if (selectedFileNodeId === nodeToDeleteId) {
+        setSelectedFileNodeId(null); 
     }
+    await performSave(null, newFileSystemRoots);
+
+    toast({ title: "Item Deleted", description: `"${nodeBeingDeleted?.name || 'Item'}" deleted.` });
     setNodeToDeleteId(null);
-  }, [nodeToDeleteId, selectedFileNodeId, currentProject, performSave, toast, isReadOnlyView, saveStatus, activeFileSystemRoots]);
+  }, [nodeToDeleteId, selectedFileNodeId, currentProject, performSave, toast, isReadOnlyView]);
 
   const onAddFileToFolderCallback = useCallback((folderId: string | null) => {
     handleOpenNewItemDialogRef.current('file', folderId);
@@ -609,26 +535,20 @@ function ProjectPageContent() {
     }
     if (draggedNodeId === targetFolderId) return;
 
-    if (targetFolderId && findNodeByIdRecursive([{...(findNodeByIdRecursive(activeFileSystemRoots, draggedNodeId) || {} as FileSystemNode)}], targetFolderId)) {
+    if (targetFolderId && findNodeByIdRecursive([{...(findNodeByIdRecursive(activeFileSystemRootsRef.current, draggedNodeId) || {} as FileSystemNode)}], targetFolderId)) {
         toast({ title: "Invalid Move", description: "Cannot move a folder into one of its own subfolders.", variant: "destructive" });
         return;
     }
 
-    const { removedNode, newTree: treeWithoutDraggedNode } = removeNodeFromTree(activeFileSystemRoots, draggedNodeId);
+    const { removedNode, newTree: treeWithoutDraggedNode } = removeNodeFromTree(activeFileSystemRootsRef.current, draggedNodeId);
     if (!removedNode) {
       toast({ title: "Move Error", description: "Could not find item to move.", variant: "destructive" });
       return;
     }
     
     const newFileSystemRoots = addNodeToTargetInTree(treeWithoutDraggedNode, targetFolderId, removedNode);
-
-    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    const savedProject = await performSave(null, newFileSystemRoots);
-    if (savedProject) {
-        setActiveFileSystemRoots(newFileSystemRoots); // Optional: for immediate UI feedback
-        toast({ title: "Item Moved", description: `"${removedNode.name}" moved.` });
-    }
-  }, [isReadOnlyView, currentProject, performSave, toast, activeFileSystemRoots]);
+    await performSave(null, newFileSystemRoots);
+  }, [isReadOnlyView, currentProject, performSave, toast]);
 
   useEffect(() => {
     if (!currentProject || !authUser || !mounted || isLoadingProject) return;
@@ -690,28 +610,11 @@ function ProjectPageContent() {
   const editorKey = `editor-${selectedFileNodeId || 'project-root'}`;
   const whiteboardKey = `whiteboard-${selectedFileNodeId || 'project-root'}`;
 
-  const hasFileSystemRoots = activeFileSystemRoots && activeFileSystemRoots.length > 0;
+  const fileSystemNodes = currentProject.fileSystemRoots || [];
+  const hasFileSystemRoots = fileSystemNodes.length > 0;
   const showContentPlaceholder = !selectedFileNodeId && hasFileSystemRoots;
   const showCreateFilePrompt = !selectedFileNodeId && !hasFileSystemRoots;
 
-  const saveStatusIcon = () => {
-    switch (saveStatus) {
-      case 'saving': return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />;
-      case 'synced': return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-      case 'error': return <AlertCircle className="h-4 w-4 text-red-500" />;
-      case 'idle': return <Edit className="h-4 w-4 text-yellow-500" />; 
-      default: return <div className="h-4 w-4" />;
-    }
-  };
-  const saveStatusTooltip = () => {
-    switch (saveStatus) {
-      case 'saving': return "Saving changes...";
-      case 'synced': return lastSyncTime ? `Changes synced at ${lastSyncTime}` : "All changes saved.";
-      case 'error': return "Error saving. Check console or retry.";
-      case 'idle': return "Unsaved changes.";
-      default: return "Checking status...";
-    }
-  };
 
   return (
     <div className="flex h-screen flex-col fixed inset-0 pt-14">
@@ -754,10 +657,10 @@ function ProjectPageContent() {
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
               <DropdownMenuItem onClick={() => {
-                const currentActiveNode = selectedFileNodeId ? findNodeByIdRecursive(activeFileSystemRoots, selectedFileNodeId) : null;
+                const currentActiveNode = selectedFileNodeId ? findNodeByIdRecursive(activeFileSystemRootsRef.current, selectedFileNodeId) : null;
                 let parentIdToUse: string | null = null;
                 if (currentActiveNode) {
-                    parentIdToUse = currentActiveNode.type === 'folder' ? currentActiveNode.id : findParentId(activeFileSystemRoots, currentActiveNode.id);
+                    parentIdToUse = currentActiveNode.type === 'folder' ? currentActiveNode.id : findParentId(activeFileSystemRootsRef.current, currentActiveNode.id);
                 } 
                 handleOpenNewItemDialogRef.current('file', parentIdToUse);
               }}>
@@ -765,10 +668,10 @@ function ProjectPageContent() {
                 <span>New File</span>
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => {
-                 const currentActiveNode = selectedFileNodeId ? findNodeByIdRecursive(activeFileSystemRoots, selectedFileNodeId) : null;
+                 const currentActiveNode = selectedFileNodeId ? findNodeByIdRecursive(activeFileSystemRootsRef.current, selectedFileNodeId) : null;
                  let parentIdToUse: string | null = null;
                  if (currentActiveNode) {
-                     parentIdToUse = currentActiveNode.type === 'folder' ? currentActiveNode.id : findParentId(activeFileSystemRoots, currentActiveNode.id);
+                     parentIdToUse = currentActiveNode.type === 'folder' ? currentActiveNode.id : findParentId(activeFileSystemRootsRef.current, currentActiveNode.id);
                  } 
                  handleOpenNewItemDialogRef.current('folder', parentIdToUse);
               }}>
@@ -780,18 +683,31 @@ function ProjectPageContent() {
         )}
 
           <div className="ml-auto flex items-center gap-2">
-            <TooltipProvider delayDuration={100}>
+            {!isReadOnlyView && (
+              <TooltipProvider delayDuration={100}>
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <div className="p-2 rounded-md hover:bg-accent flex items-center justify-center cursor-default">
-                           {saveStatusIcon()}
-                        </div>
+                        <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => performSave()}
+                            disabled={saveStatus === 'saving' || saveStatus === 'synced'}
+                            className="px-3"
+                        >
+                            {saveStatus === 'saving' ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <Save className="mr-2 h-4 w-4" />
+                            )}
+                            {saveStatus === 'saving' ? 'Saving...' : 'Save'}
+                        </Button>
                     </TooltipTrigger>
                     <TooltipContent side="bottom">
-                        <p>{saveStatusTooltip()}</p>
+                        <p>{saveStatus === 'unsaved' ? 'You have unsaved changes' : 'All changes saved'}</p>
                     </TooltipContent>
                 </Tooltip>
-            </TooltipProvider>
+              </TooltipProvider>
+            )}
 
             <Button
               variant="outline"
@@ -853,7 +769,7 @@ function ProjectPageContent() {
               <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
                 <div className="h-full p-1 sm:p-2 md:p-3">
                   <FileExplorer
-                    nodes={activeFileSystemRoots}
+                    nodes={fileSystemNodes}
                     onNodeSelect={handleNodeSelectedInExplorer}
                     onDeleteNode={handleDeleteNodeRequest}
                     onAddFileToFolder={onAddFileToFolderCallback}
@@ -931,10 +847,10 @@ function ProjectPageContent() {
             <DialogTitle>Create New {newItemType === 'file' ? 'File' : 'Folder'}</DialogTitle>
             <DialogDescription>
               Enter a name for your new {newItemType}.
-              {parentIdForNewItem && activeFileSystemRoots.length > 0 && findNodeByIdRecursive(activeFileSystemRoots, parentIdForNewItem) ? 
-                ` It will be created in "${findNodeByIdRecursive(activeFileSystemRoots, parentIdForNewItem)?.name}".` :
-                 selectedFileNodeId && activeFileSystemRoots.length > 0 && findNodeByIdRecursive(activeFileSystemRoots, selectedFileNodeId)?.type === 'folder' ?
-                 ` It will be created in "${findNodeByIdRecursive(activeFileSystemRoots, selectedFileNodeId)?.name}".` :
+              {parentIdForNewItem && fileSystemNodes.length > 0 && findNodeByIdRecursive(fileSystemNodes, parentIdForNewItem) ? 
+                ` It will be created in "${findNodeByIdRecursive(fileSystemNodes, parentIdForNewItem)?.name}".` :
+                 selectedFileNodeId && fileSystemNodes.length > 0 && findNodeByIdRecursive(fileSystemNodes, selectedFileNodeId)?.type === 'folder' ?
+                 ` It will be created in "${findNodeByIdRecursive(fileSystemNodes, selectedFileNodeId)?.name}".` :
                  " It will be created at the root of the project."
               }
             </DialogDescription>
@@ -964,7 +880,7 @@ function ProjectPageContent() {
             <AlertDialogTitle>Are you sure?</AlertDialogTitle>
             <AlertDialogDescription>
               This will permanently delete the selected item
-              {currentProject && activeFileSystemRoots && nodeToDeleteId && findNodeByIdRecursive(activeFileSystemRoots, nodeToDeleteId)?.type === 'folder' && ' and all its contents'}.
+              {currentProject && fileSystemNodes && nodeToDeleteId && findNodeByIdRecursive(fileSystemNodes, nodeToDeleteId)?.type === 'folder' && ' and all its contents'}.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -998,4 +914,6 @@ export default function ProjectPage() {
     </Suspense>
   )
 }
+    
+
     
