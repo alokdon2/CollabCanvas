@@ -3,7 +3,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
-const THEMES = ['light', 'dark', 'midnight', 'latte', 'matrix', 'sakura'] as const;
+const THEMES = ['light', 'midnight', 'latte', 'matrix', 'sakura'] as const;
 const THEME_CLASSES = ['light', 'dark', 'theme-midnight', 'theme-latte', 'theme-matrix', 'theme-sakura'];
 
 export type Theme = (typeof THEMES)[number] | 'system';
@@ -52,16 +52,15 @@ export function ThemeProvider({
     // Determine the effective theme
     let effectiveTheme: (typeof THEMES)[number];
     if (theme === "system") {
-      effectiveTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      const systemIsDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      // Default system dark to midnight
+      effectiveTheme = systemIsDark ? "midnight" : "light";
     } else {
       effectiveTheme = theme;
     }
 
     // Add the appropriate theme class
     switch(effectiveTheme) {
-        case 'dark':
-            root.classList.add('dark');
-            break;
         case 'midnight':
             root.classList.add('theme-midnight');
             break;
@@ -81,7 +80,7 @@ export function ThemeProvider({
     }
     
     // Add 'dark' class for dark-like themes for shadcn component compatibility
-    if (['dark', 'midnight', 'matrix'].includes(effectiveTheme)) {
+    if (['midnight', 'matrix'].includes(effectiveTheme)) {
         root.classList.add('dark');
     }
     
