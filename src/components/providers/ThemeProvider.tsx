@@ -4,6 +4,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
 const THEMES = ['light', 'dark', 'midnight', 'latte', 'matrix'] as const;
+const THEME_CLASSES = ['light', 'dark', 'theme-midnight', 'theme-latte', 'theme-matrix'];
 
 export type Theme = (typeof THEMES)[number] | 'system';
 
@@ -46,7 +47,7 @@ export function ThemeProvider({
     const root = window.document.documentElement;
     
     // Remove all possible theme classes
-    root.classList.remove(...THEMES);
+    root.classList.remove(...THEME_CLASSES, 'dark');
     
     // Determine the effective theme
     let effectiveTheme: (typeof THEMES)[number];
@@ -57,16 +58,28 @@ export function ThemeProvider({
     }
 
     // Add the appropriate theme class
-    const themeClass = effectiveTheme === 'light' || effectiveTheme === 'latte' ? effectiveTheme : `theme-${effectiveTheme}`;
-    if(effectiveTheme !== 'light' && effectiveTheme !== 'latte') {
-      root.classList.add(themeClass);
+    switch(effectiveTheme) {
+        case 'dark':
+            root.classList.add('dark');
+            break;
+        case 'midnight':
+            root.classList.add('theme-midnight');
+            break;
+        case 'latte':
+            root.classList.add('theme-latte');
+            break;
+        case 'matrix':
+            root.classList.add('theme-matrix');
+            break;
+        case 'light':
+        default:
+            // No class needed for default light theme
+            break;
     }
     
-    // Add 'dark' class for dark-like themes for component compatibility
+    // Add 'dark' class for dark-like themes for shadcn component compatibility
     if (['dark', 'midnight', 'matrix'].includes(effectiveTheme)) {
         root.classList.add('dark');
-    } else {
-        root.classList.remove('dark');
     }
     
     try {
