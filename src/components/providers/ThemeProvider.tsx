@@ -3,8 +3,9 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 
-// Ensure Theme type is exported or accessible if ThemeSwitcher imports it
-export type Theme = "light" | "dark" | "system"; // Added "system" as a possible value for the state
+const THEMES = ['light', 'dark', 'midnight', 'latte', 'matrix'] as const;
+
+export type Theme = (typeof THEMES)[number] | 'system';
 
 interface ThemeProviderProps {
   children: ReactNode;
@@ -18,7 +19,7 @@ interface ThemeProviderState {
 }
 
 const initialState: ThemeProviderState = {
-  theme: "system", // Default to system
+  theme: "system",
   setTheme: () => null,
 };
 
@@ -26,7 +27,7 @@ const ThemeProviderContext = createContext<ThemeProviderState>(initialState);
 
 export function ThemeProvider({
   children,
-  defaultTheme = "system", // Changed default to "system" to align with typical usage
+  defaultTheme = "system",
   storageKey = "collabcanvas-theme",
 }: ThemeProviderProps) {
   const [theme, setTheme] = useState<Theme>(() => {
@@ -34,8 +35,7 @@ export function ThemeProvider({
       return defaultTheme;
     }
     try {
-      const storedTheme = window.localStorage.getItem(storageKey) as Theme | null;
-      return storedTheme || defaultTheme;
+      return (window.localStorage.getItem(storageKey) as Theme | null) || defaultTheme;
     } catch (e) {
       console.error("Error reading theme from localStorage", e);
       return defaultTheme;
@@ -44,17 +44,32 @@ export function ThemeProvider({
 
   useEffect(() => {
     const root = window.document.documentElement;
-    root.classList.remove("light", "dark");
-
-    let effectiveTheme = theme;
+    
+    // Remove all possible theme classes
+    root.classList.remove(...THEMES);
+    
+    // Determine the effective theme
+    let effectiveTheme: (typeof THEMES)[number];
     if (theme === "system") {
       effectiveTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    } else {
+      effectiveTheme = theme;
     }
-    // Add the resolved theme class to the root element
-    root.classList.add(effectiveTheme); 
+
+    // Add the appropriate theme class
+    const themeClass = effectiveTheme === 'light' || effectiveTheme === 'latte' ? effectiveTheme : `theme-${effectiveTheme}`;
+    if(effectiveTheme !== 'light' && effectiveTheme !== 'latte') {
+      root.classList.add(themeClass);
+    }
+    
+    // Add 'dark' class for dark-like themes for component compatibility
+    if (['dark', 'midnight', 'matrix'].includes(effectiveTheme)) {
+        root.classList.add('dark');
+    } else {
+        root.classList.remove('dark');
+    }
     
     try {
-      // Save the user's preference (which could be "system", "light", or "dark")
       window.localStorage.setItem(storageKey, theme);
     } catch (e) {
       console.error("Error saving theme to localStorage", e);

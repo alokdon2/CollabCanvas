@@ -55,36 +55,26 @@
 
 @layer base {
   :root {
-    --background: 0 0% 87.8%; /* Light Gray #E0E0E0 */
-    --foreground: 0 0% 15%; /* Dark Gray */
-
-    --card: 0 0% 92%; /* Slightly lighter than background */
-    --card-foreground: 0 0% 15%;
-
-    --popover: 0 0% 92%;
-    --popover-foreground: 0 0% 15%;
-
-    --primary: 180 100% 25%; /* Deep Teal #008080 */
-    --primary-foreground: 0 0% 100%; /* White */
-
-    --secondary: 180 50% 90%; /* Lighter Teal */
-    --secondary-foreground: 180 100% 20%; /* Darker Teal */
-
-    --muted: 0 0% 90%;
-    --muted-foreground: 0 0% 40%;
-
-    --accent: 17 100% 73.7%; /* Soft Orange #FFA07A */
-    --accent-foreground: 0 0% 10%; /* Dark Gray/Black */
-
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
     --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 0 0% 98%;
-
-    --border: 0 0% 80%;
-    --input: 0 0% 80%;
-    --ring: 180 100% 25%; /* Primary for ring */
-
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
     --radius: 0.5rem;
-
     --chart-1: 12 76% 61%;
     --chart-2: 173 58% 39%;
     --chart-3: 197 37% 24%;
@@ -93,40 +83,98 @@
   }
 
   .dark {
-    --background: 0 0% 8.2%; /* #151515 - Excalidraw dark background */
-    --foreground: 0 0% 92%; /* Light Gray */
-
-    --card: 0 0% 12.2%; /* #1f1f1f - Slightly lighter than background */
-    --card-foreground: 0 0% 95%;
-
-    --popover: 0 0% 12.2%; /* #1f1f1f - Same as card */
-    --popover-foreground: 0 0% 95%;
-
-    --primary: 180 100% 35%; /* Lighter Deep Teal for dark mode */
-    --primary-foreground: 0 0% 100%; /* White */
-
-    --secondary: 180 50% 25%; /* Darker Teal variant */
-    --secondary-foreground: 0 0% 95%;
-
-    --muted: 0 0% 14.9%; /* #262626 - A bit lighter than card */
-    --muted-foreground: 0 0% 65%; /* Adjusted for better visibility in dark mode placeholder */
-
-    --accent: 17 100% 65%; /* Adjusted Soft Orange */
-    --accent-foreground: 0 0% 10%; /* Dark Gray/Black */
-
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 0 0% 98%;
-
-    --border: 0 0% 20%; /* #333333 */
-    --input: 0 0% 20%; /* #333333 */
-    --ring: 180 100% 35%; /* Primary for ring in dark mode */
-
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
   }
+
+  .theme-midnight {
+    --background: 240 10% 3.9%;
+    --foreground: 210 20% 98%;
+    --card: 240 10% 3.9%;
+    --card-foreground: 210 20% 98%;
+    --popover: 240 10% 3.9%;
+    --popover-foreground: 210 20% 98%;
+    --primary: 210 20% 98%;
+    --primary-foreground: 240 10% 3.9%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 210 20% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 240 3.7% 15.9%;
+    --accent-foreground: 210 20% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 210 20% 98%;
+  }
+
+  .theme-latte {
+    --background: 38 60% 94.1%; /* cream */
+    --foreground: 38 10% 20%; /* dark brown */
+    --card: 38 60% 94.1%;
+    --card-foreground: 38 10% 20%;
+    --popover: 38 60% 94.1%;
+    --popover-foreground: 38 10% 20%;
+    --primary: 199 89% 48.8%; /* soft blue */
+    --primary-foreground: 38 60% 98%;
+    --secondary: 38 30% 88%;
+    --secondary-foreground: 38 10% 20%;
+    --muted: 38 30% 88%;
+    --muted-foreground: 38 5% 45%;
+    --accent: 38 30% 88%;
+    --accent-foreground: 38 10% 20%;
+    --destructive: 0 72.2% 50.6%;
+    --destructive-foreground: 38 60% 98%;
+    --border: 38 20% 82%;
+    --input: 38 20% 82%;
+    --ring: 199 89% 48.8%;
+  }
+
+  .theme-matrix {
+    --background: 0 0% 4%;
+    --foreground: 120 100% 75%; /* bright green */
+    --card: 0 0% 4%;
+    --card-foreground: 120 100% 75%;
+    --popover: 0 0% 4%;
+    --popover-foreground: 120 100% 75%;
+    --primary: 120 100% 75%;
+    --primary-foreground: 0 0% 4%;
+    --secondary: 120 100% 10%;
+    --secondary-foreground: 120 100% 75%;
+    --muted: 120 100% 10%;
+    --muted-foreground: 120 100% 60%;
+    --accent: 120 100% 15%;
+    --accent-foreground: 120 100% 75%;
+    --destructive: 0 100% 50%;
+    --destructive-foreground: 0 0% 4%;
+    --border: 120 100% 15%;
+    --input: 120 100% 15%;
+    --ring: 120 100% 75%;
+  }
+
 }
 
 @layer base {
@@ -143,7 +191,7 @@
     @apply min-h-full; /* Ensure it takes up editor space */
   }
   
-  .dark .prose-invert {
+  .dark .prose-invert, .theme-midnight .prose-invert, .theme-matrix .prose-invert {
     --tw-prose-body: hsl(var(--foreground) / 0.9);
     --tw-prose-headings: hsl(var(--foreground));
     --tw-prose-lead: hsl(var(--foreground) / 0.9);
@@ -348,5 +396,6 @@
     
 
   
+
 
 

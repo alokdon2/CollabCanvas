@@ -47,7 +47,9 @@ const WhiteboardComponent = ({
 }: WhiteboardProps) => {
   const excalidrawAPIRef = useRef<ExcalidrawImperativeAPI | null>(null);
   const [isClient, setIsClient] = useState(false);
-  const { theme: appTheme } = useTheme();
+  const { theme: appThemeSetting } = useTheme();
+
+  const [effectiveTheme, setEffectiveTheme] = useState<'light' | 'dark'>('light');
 
   // State to hold the processed initialData, ready for Excalidraw
   const [processedInitialData, setProcessedInitialData] = useState<WhiteboardData>(
@@ -57,6 +59,18 @@ const WhiteboardComponent = ({
   useEffect(() => {
     setIsClient(true);
   }, []);
+
+  useEffect(() => {
+    let currentTheme: 'light' | 'dark';
+    if (appThemeSetting === 'system') {
+      currentTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    } else if (['dark', 'midnight', 'matrix'].includes(appThemeSetting)) {
+      currentTheme = 'dark';
+    } else {
+      currentTheme = 'light';
+    }
+    setEffectiveTheme(currentTheme);
+  }, [appThemeSetting]);
 
   // Effect to process the initialData prop when it changes
   useEffect(() => {
@@ -148,12 +162,13 @@ const WhiteboardComponent = ({
   return (
     <div className="h-full w-full rounded-lg border bg-card text-card-foreground shadow-sm excalidraw-wrapper">
       <DynamicallyLoadedExcalidraw
+        key={effectiveTheme}
         excalidrawAPI={(api) => (excalidrawAPIRef.current = api)}
         initialData={processedInitialData} 
         onChange={handleExcalidrawChange}
         viewModeEnabled={isReadOnly} 
         uiOptions={{ canvasActions: { toggleMenu: false } }} 
-        theme={appTheme === 'dark' ? 'dark' : 'light'}
+        theme={effectiveTheme}
       />
     </div>
   );
