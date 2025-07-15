@@ -74,7 +74,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (e) {
-      setError(e as AuthError);
+      const authError = e as AuthError;
+      if (authError.code === 'auth/authorized-domain') {
+          const customError = new Error(
+            'This domain is not authorized for Google Sign-In. Please add it to the authorized domains in your Firebase console (Authentication > Settings > Authorized domains).'
+          ) as AuthError;
+          customError.code = authError.code;
+          setError(customError);
+      } else {
+        setError(authError);
+      }
     } finally {
       setLoading(false);
     }
