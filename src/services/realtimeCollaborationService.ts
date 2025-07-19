@@ -243,10 +243,10 @@ export async function saveProjectData(project: Project): Promise<void> {
       id: project.id,
       name: project.name,
       ownerId: project.ownerId || null,
-      createdAt: project.createdAt, // Should be string from client
-      updatedAt: project.updatedAt, // Should be string from client (new Date().toISOString())
+      createdAt: project.createdAt, 
+      updatedAt: project.updatedAt, 
       projectDataBlob: JSON.stringify(sanitizedBlobContent || {}),
-      viewers: sanitizeDataForFirestore(project.viewers || {}), // Sanitize and save viewers
+      viewers: sanitizeDataForFirestore(project.viewers || {}),
     };
 
     const projectDocRef = doc(db, PROJECTS_COLLECTION, project.id);

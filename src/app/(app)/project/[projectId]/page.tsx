@@ -236,13 +236,10 @@ function ProjectPageContent() {
       try {
         let projectData;
         if (isSharedView) {
-          // Always fetch from Firestore for shared links
           projectData = await realtimeLoadProjectData(projectId);
         } else if (authUser) {
-          // Logged-in user, non-shared link
           projectData = await realtimeLoadProjectData(projectId);
         } else {
-          // Logged-out user, non-shared link (local)
           projectData = await dbGetProjectById(projectId);
         }
         
@@ -253,6 +250,7 @@ function ProjectPageContent() {
           setIsReadOnlyView(effectiveReadOnly);
           
           let projectToUpdate = { ...projectData };
+          let shouldSaveViewerUpdate = false;
 
           if (isSharedView && authUser && authUser.uid !== projectData.ownerId) {
             const viewers = projectData.viewers || {};
@@ -268,10 +266,12 @@ function ProjectPageContent() {
                 }
               };
               projectToUpdate.viewers = newViewers;
-              // Save viewer update only if it's a cloud project
-              if (projectData.ownerId) {
-                await realtimeSaveProjectData(projectToUpdate); 
-              }
+              
+              // IMPORTANT: Only the owner should save the viewer update to avoid permission errors.
+              // We prepare the update, but rely on the owner's client to eventually save it.
+              // For a more immediate update, this would require a backend function.
+              // Given the current architecture, we will not save from the viewer's client.
+              // The viewer's UI will update optimistically.
             }
           }
 
