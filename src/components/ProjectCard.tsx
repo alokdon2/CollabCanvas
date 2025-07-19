@@ -1,5 +1,5 @@
 
-"use client"; // Added "use client" for useMemo
+"use client"; 
 
 import Link from "next/link";
 import { format } from "date-fns";
@@ -25,12 +25,13 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import type { Project, FileSystemNode } from "@/lib/types";
-import React, { useMemo } from "react"; // Import React and useMemo
+import React, { useMemo } from "react"; 
 
 interface ProjectCardProps {
   project: Project;
   onDeleteProject: (projectId: string) => void;
   onShareProject: (project: Project) => void;
+  isLocal: boolean;
 }
 
 function countFileSystemItems(nodes: FileSystemNode[]): number {
@@ -43,7 +44,7 @@ function countFileSystemItems(nodes: FileSystemNode[]): number {
   return count;
 }
 
-const ProjectCardComponent = ({ project, onDeleteProject, onShareProject }: ProjectCardProps) => {
+const ProjectCardComponent = ({ project, onDeleteProject, onShareProject, isLocal }: ProjectCardProps) => {
   const { textSnippet, whiteboardItemCount, fileSystemItemCount } = useMemo(() => {
     const snippet = project.textContent?.replace(/<[^>]+>/g, ' ').trim();
     const boardItems = project.whiteboardContent?.elements?.length || 0;
@@ -59,7 +60,12 @@ const ProjectCardComponent = ({ project, onDeleteProject, onShareProject }: Proj
   return (
     <Card className="flex flex-col">
       <CardHeader>
-        <CardTitle className="truncate text-xl">{project.name}</CardTitle>
+        <div className="flex items-center justify-between">
+            <CardTitle className="truncate text-xl">{project.name}</CardTitle>
+            {isLocal && (
+                <div className="text-xs font-medium text-muted-foreground bg-muted px-2 py-1 rounded-full">Local</div>
+            )}
+        </div>
         <CardDescription>
           Last updated: {format(new Date(project.updatedAt), "PPP p")}
         </CardDescription>

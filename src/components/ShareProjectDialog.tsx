@@ -21,7 +21,7 @@ interface ShareProjectDialogProps {
   project: Project;
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  isLocal?: boolean; // To adjust text based on backend
+  isLocal?: boolean; 
 }
 
 export function ShareProjectDialog({ project, isOpen, onOpenChange, isLocal = false }: ShareProjectDialogProps) {
@@ -31,10 +31,14 @@ export function ShareProjectDialog({ project, isOpen, onOpenChange, isLocal = fa
 
   useEffect(() => {
     if (project && typeof window !== 'undefined') {
-      // The ?shared=true parameter can be used by ProjectPage to enable a read-only view
-      setShareableLink(`${window.location.origin}/project/${project.id}?shared=true`);
+      const url = new URL(`${window.location.origin}/project/${project.id}`);
+      if (!isLocal) {
+        // Only add shared=true for non-local (cloud) projects
+        url.searchParams.set('shared', 'true');
+      }
+      setShareableLink(url.toString());
     }
-  }, [project]);
+  }, [project, isLocal]);
 
   const handleCopyLink = async () => {
     try {
@@ -56,10 +60,9 @@ export function ShareProjectDialog({ project, isOpen, onOpenChange, isLocal = fa
         <DialogHeader>
           <DialogTitle>Share "{project.name}"</DialogTitle>
           <DialogDescription>
-            Anyone with this link can view the project.
             {isLocal 
-              ? " Note: This project is stored locally in your browser. The link works for you to reopen it, but others won't see your local changes unless you export and share the data."
-              : " Editing permissions are not yet implemented for shared links via Firestore."
+              ? "This link will only work on this device to reopen your local project. To share, sign in and sync your projects to the cloud first."
+              : "Anyone with this link can view the project. Editing permissions for others are not yet available."
             }
           </DialogDescription>
         </DialogHeader>
