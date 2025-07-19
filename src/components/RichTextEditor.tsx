@@ -30,11 +30,13 @@ import {
   AlignJustify, 
   ListCollapse, 
   MessageSquareQuote, 
+  Wand2,
 } from "lucide-react";
 import { AITextEnhancementDialog } from "./AITextEnhancementDialog";
 import { AskAiDialog } from "./AskAiDialog"; 
 import { generateProjectSummary, type GenerateProjectSummaryOutput } from "@/ai/flows/generate-project-summary";
 import { autoFormatText, type AutoFormatTextOutput } from "@/ai/flows/autoformat-text-flow";
+import { generateImage } from '@/ai/flows/generate-image-flow';
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -53,6 +55,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from './ui/textarea';
 import { cn } from '@/lib/utils';
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import Image from 'next/image';
 
 import CodeBlockLowlight from '@tiptap/extension-code-block-lowlight';
 import ImageExtension from '@tiptap/extension-image';
@@ -386,6 +390,9 @@ export function RichTextEditor({ value, onChange, isReadOnly = false }: RichText
 
   const [isImageDialogOpen, setIsImageDialogOpen] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
+  const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [isGeneratingImage, setIsGeneratingImage] = useState(false);
 
   const [isAskAiDialogOpen, setIsAskAiDialogOpen] = useState(false); 
   const [initialQueryForAskAi, setInitialQueryForAskAi] = useState(""); 
@@ -612,14 +619,34 @@ export function RichTextEditor({ value, onChange, isReadOnly = false }: RichText
   const handleOpenImageDialog = () => {
     if (isReadOnly) return;
     setImageUrl("");
+    setGeneratedImageUrl(null);
+    setImagePrompt("");
     setIsImageDialogOpen(true);
   };
 
-  const handleInsertImageFromDialog = () => {
-    if (editor && imageUrl.trim() && !isReadOnly) {
-      editor.chain().focus().setImage({ src: imageUrl }).run();
+  const handleInsertImageFromDialog = (src: string | null) => {
+    if (editor && src && src.trim() && !isReadOnly) {
+      editor.chain().focus().setImage({ src }).run();
     }
     setIsImageDialogOpen(false);
+  };
+  
+  const handleGenerateImage = async () => {
+    if (!imagePrompt.trim()) {
+      toast({ title: "Error", description: "Prompt cannot be empty.", variant: "destructive" });
+      return;
+    }
+    setIsGeneratingImage(true);
+    setGeneratedImageUrl(null);
+    try {
+      const result = await generateImage({ prompt: imagePrompt });
+      setGeneratedImageUrl(result.imageUrl);
+    } catch (error) {
+      console.error("AI Image Generation error:", error);
+      toast({ title: "AI Error", description: "Failed to generate image. Please try again.", variant: "destructive" });
+    } finally {
+      setIsGeneratingImage(false);
+    }
   };
 
   const handleAskAi = () => {
@@ -828,30 +855,76 @@ export function RichTextEditor({ value, onChange, isReadOnly = false }: RichText
                 </DialogFooter>
                 </DialogContent>
             </Dialog>
-
+            
             <Dialog open={isImageDialogOpen} onOpenChange={setIsImageDialogOpen}>
-                <DialogContent className="sm:max-w-md">
+              <DialogContent className="sm:max-w-xl">
                 <DialogHeader>
-                    <DialogTitle>Insert Image</DialogTitle>
-                    <DialogDescription>
-                    Enter the URL of the image you want to insert.
-                    </DialogDescription>
+                  <DialogTitle>Insert Image</DialogTitle>
+                  <DialogDescription>
+                    Provide a URL or generate an image with AI.
+                  </DialogDescription>
                 </DialogHeader>
-                <div className="grid gap-4 py-4">
-                    <Label htmlFor="imageUrl">Image URL</Label>
-                    <Input
-                    id="imageUrl"
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                    placeholder="https://example.com/image.png"
-                    />
-                </div>
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => setIsImageDialogOpen(false)}>Cancel</Button>
-                    <Button onClick={handleInsertImageFromDialog} disabled={!imageUrl.trim()}>Insert Image</Button>
-                </DialogFooter>
-                </DialogContent>
+                <Tabs defaultValue="url" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="url">From URL</TabsTrigger>
+                    <TabsTrigger value="ai">Generate with AI</TabsTrigger>
+                  </TabsList>
+                  <TabsContent value="url">
+                    <div className="grid gap-4 py-4">
+                      <Label htmlFor="imageUrl">Image URL</Label>
+                      <Input
+                        id="imageUrl"
+                        value={imageUrl}
+                        onChange={(e) => setImageUrl(e.target.value)}
+                        placeholder="https://example.com/image.png"
+                      />
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsImageDialogOpen(false)}>Cancel</Button>
+                      <Button onClick={() => handleInsertImageFromDialog(imageUrl)} disabled={!imageUrl.trim()}>Insert Image</Button>
+                    </DialogFooter>
+                  </TabsContent>
+                  <TabsContent value="ai">
+                    <div className="grid gap-4 py-4">
+                      <Label htmlFor="imagePrompt">AI Prompt</Label>
+                      <Input
+                        id="imagePrompt"
+                        value={imagePrompt}
+                        onChange={(e) => setImagePrompt(e.target.value)}
+                        placeholder="e.g., A majestic dragon soaring over a mystical forest"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') { e.preventDefault(); handleGenerateImage(); }
+                        }}
+                      />
+                      <Button onClick={handleGenerateImage} disabled={isGeneratingImage || !imagePrompt.trim()}>
+                        {isGeneratingImage ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Wand2 className="mr-2 h-4 w-4" />}
+                        Generate
+                      </Button>
+                      <div className="mt-4 flex min-h-[256px] w-full items-center justify-center rounded-md border border-dashed">
+                        {isGeneratingImage ? (
+                          <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                            <Loader2 className="h-8 w-8 animate-spin" />
+                            <p>Generating image...</p>
+                          </div>
+                        ) : generatedImageUrl ? (
+                          <Image src={generatedImageUrl} alt="AI generated image" width={512} height={512} className="max-h-[400px] w-auto rounded-md object-contain" />
+                        ) : (
+                          <div className="text-center text-muted-foreground">
+                            <ImageIcon className="mx-auto h-12 w-12" />
+                            <p>Image preview will appear here.</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setIsImageDialogOpen(false)}>Cancel</Button>
+                      <Button onClick={() => handleInsertImageFromDialog(generatedImageUrl)} disabled={!generatedImageUrl || isGeneratingImage}>Insert Generated Image</Button>
+                    </DialogFooter>
+                  </TabsContent>
+                </Tabs>
+              </DialogContent>
             </Dialog>
+
         </>
       )}
     </div>
