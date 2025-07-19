@@ -61,6 +61,12 @@ export interface FileSystemNode {
   content?: string; // Legacy or for simple text, can be phased out or used for non-editor files
 }
 
+export interface ProjectViewer {
+  displayName: string | null;
+  photoURL: string | null;
+  viewedAt: string;
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -70,6 +76,6 @@ export interface Project {
   whiteboardContent: WhiteboardData | null;
   fileSystemRoots: FileSystemNode[];
   createdAt: string; 
-  updatedAt: string; 
+  updatedAt: string;
+  viewers?: Record<string, ProjectViewer>;
 }
-

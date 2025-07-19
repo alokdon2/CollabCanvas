@@ -5,7 +5,7 @@ import { useEffect, useState, useCallback, useRef, Suspense, useMemo } from "rea
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { Whiteboard } from "@/components/Whiteboard";
-import type { Project, WhiteboardData, FileSystemNode, ExcalidrawAppState } from "@/lib/types";
+import type { Project, WhiteboardData, FileSystemNode, ExcalidrawAppState, ProjectViewer } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderTree, Loader2, PanelLeftOpen, PlusCircle, FilePlus2, FolderPlus, Info, CheckCircle2, AlertCircle, Save, Search } from "lucide-react";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
@@ -54,6 +54,7 @@ import {
 } from "@/services/realtimeCollaborationService";
 import { dbGetProjectById, dbSaveProject, dbDeleteProject } from "@/lib/indexedDB";
 import { useAuth } from "@/contexts/AuthContext";
+import { ProjectViewers } from "@/components/ProjectViewers";
 
 type ViewMode = "editor" | "whiteboard" | "both";
 type SaveStatus = 'unsaved' | 'saving' | 'synced' | 'error';
@@ -241,13 +242,34 @@ function ProjectPageContent() {
         if (!mounted) return;
 
         if (projectData) {
-          setCurrentProject(projectData);
-          setSaveStatus('synced');
-          setSelectedFileNodeId(null); 
-          // Determine read-only status after project loads
           const isSharedView = searchParams.get('shared') === 'true';
           const effectiveReadOnly = isSharedView && (!authUser || authUser.uid !== projectData.ownerId);
           setIsReadOnlyView(effectiveReadOnly);
+          
+          let projectToUpdate = { ...projectData };
+
+          if (isSharedView && authUser && authUser.uid !== projectData.ownerId) {
+            const viewers = projectData.viewers || {};
+            const userHasViewed = viewers[authUser.uid];
+
+            if (!userHasViewed) {
+              const newViewers = {
+                ...viewers,
+                [authUser.uid]: {
+                  displayName: authUser.displayName,
+                  photoURL: authUser.photoURL,
+                  viewedAt: new Date().toISOString(),
+                }
+              };
+              projectToUpdate.viewers = newViewers;
+              await realtimeSaveProjectData(projectToUpdate); 
+            }
+          }
+
+          setCurrentProject(projectToUpdate);
+          setSaveStatus('synced');
+          setSelectedFileNodeId(null);
+
         } else {
           toast({ title: "Error", description: "Project not found.", variant: "destructive" });
           router.replace("/");
@@ -630,6 +652,7 @@ function ProjectPageContent() {
   const showContentPlaceholder = !selectedFileNodeId && hasFileSystemRoots && !projectSearchTerm;
   const showCreateFilePrompt = !selectedFileNodeId && !hasFileSystemRoots && !projectSearchTerm;
   const showSearchResultsInfo = !!projectSearchTerm;
+  const isOwner = authUser?.uid === currentProject.ownerId;
 
   return (
     <div className="flex h-screen flex-col fixed inset-0 pt-14">
@@ -693,8 +716,8 @@ function ProjectPageContent() {
             </DropdownMenuContent>
           </DropdownMenu>
         )}
-
           <div className="ml-auto flex items-center gap-2">
+             {isOwner && <ProjectViewers viewers={currentProject.viewers || {}} />}
             {!isReadOnlyView && (
               <TooltipProvider delayDuration={100}>
                 <Tooltip>
