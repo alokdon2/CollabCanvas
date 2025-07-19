@@ -5,9 +5,9 @@ import { useEffect, useState, useCallback, useRef, Suspense, useMemo } from "rea
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { RichTextEditor } from "@/components/RichTextEditor";
 import { Whiteboard } from "@/components/Whiteboard";
-import type { Project, WhiteboardData, FileSystemNode, ExcalidrawAppState, ProjectViewer } from "@/lib/types";
+import type { Project, WhiteboardData, FileSystemNode, ExcalidrawAppState, ProjectViewer, HistoryEntry } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderTree, Loader2, PanelLeftOpen, PlusCircle, FilePlus2, FolderPlus, Info, CheckCircle2, AlertCircle, Save, Search } from "lucide-react";
+import { ArrowLeft, Share2, Trash2, Edit, Check, LayoutDashboard, Edit3, Rows, FolderTree, Loader2, PanelLeftOpen, PlusCircle, FilePlus2, FolderPlus, Info, CheckCircle2, AlertCircle, Save, Search, History } from "lucide-react";
 import { ShareProjectDialog } from "@/components/ShareProjectDialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,10 +41,12 @@ import {
   ResizablePanel,
   ResizableHandle,
 } from "@/components/ui/resizable";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { useProjectContext } from "@/contexts/ProjectContext";
 import { FileExplorer } from "@/components/FileExplorer";
+import { ProjectHistory } from "@/components/ProjectHistory";
 import {
   loadProjectData as realtimeLoadProjectData,
   saveProjectData as realtimeSaveProjectData,
@@ -58,6 +60,7 @@ import { ProjectViewers } from "@/components/ProjectViewers";
 
 type ViewMode = "editor" | "whiteboard" | "both";
 type SaveStatus = 'unsaved' | 'saving' | 'synced' | 'error';
+type ExplorerTab = 'files' | 'history';
 
 const DEFAULT_EMPTY_TEXT_CONTENT = "<p></p>";
 const DEFAULT_EMPTY_WHITEBOARD_DATA: WhiteboardData = {
@@ -220,6 +223,7 @@ function ProjectPageContent() {
   const [projectSearchTerm, setProjectSearchTerm] = useState("");
 
   const [saveStatus, setSaveStatus] = useState<SaveStatus>('synced');
+  const [activeExplorerTab, setActiveExplorerTab] = useState<ExplorerTab>('files');
   
   // --- Initial Load ---
   useEffect(() => {
@@ -252,8 +256,8 @@ function ProjectPageContent() {
           let projectToUpdate = { ...projectData };
           let shouldSaveViewerUpdate = false;
 
-          if (isSharedView && authUser && authUser.uid !== projectData.ownerId) {
-            const viewers = projectData.viewers || {};
+          if (isSharedView && authUser && authUser.uid !== projectToUpdate.ownerId) {
+            const viewers = projectToUpdate.viewers || {};
             const userHasViewed = viewers[authUser.uid];
 
             if (!userHasViewed) {
@@ -267,17 +271,26 @@ function ProjectPageContent() {
               };
               projectToUpdate.viewers = newViewers;
               
-              // IMPORTANT: Only the owner should save the viewer update to avoid permission errors.
-              // We prepare the update, but rely on the owner's client to eventually save it.
-              // For a more immediate update, this would require a backend function.
-              // Given the current architecture, we will not save from the viewer's client.
-              // The viewer's UI will update optimistically.
+              const newHistoryEntry: HistoryEntry = {
+                id: crypto.randomUUID(),
+                timestamp: new Date().toISOString(),
+                message: `${authUser.displayName || 'An anonymous user'} viewed the project.`,
+                userId: authUser.uid,
+              };
+              projectToUpdate.history = [newHistoryEntry, ...(projectToUpdate.history || [])];
+              
+              shouldSaveViewerUpdate = true;
             }
           }
 
           setCurrentProject(projectToUpdate);
           setSaveStatus('synced');
           setSelectedFileNodeId(null);
+
+          // Only the owner saves the update
+          if (shouldSaveViewerUpdate && authUser && authUser.uid === projectData.ownerId) {
+              await realtimeSaveProjectData(projectToUpdate);
+          }
 
         } else {
           toast({ title: "Error", description: "Project not found.", variant: "destructive" });
@@ -701,7 +714,7 @@ function ProjectPageContent() {
               placeholder="Search in project..."
               className="pl-10 h-9"
               value={projectSearchTerm}
-              onChange={(e) => setProjectSearchTerm(e.target.value)}
+              onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
 
@@ -771,9 +784,18 @@ function ProjectPageContent() {
           {isExplorerVisible && (
             <>
               <ResizablePanel defaultSize={20} minSize={15} maxSize={40}>
-                <div className="h-full p-1 sm:p-2 md:p-3">
-                  <FileExplorer nodes={filteredFileSystemNodes} onNodeSelect={handleNodeSelectedInExplorer} onDeleteNode={handleDeleteNodeRequest} onAddFileToFolder={onAddFileToFolderCallback} onAddFolderToFolder={onAddFolderToFolderCallback} selectedNodeId={selectedFileNodeId} onMoveNode={handleMoveNode} isReadOnly={isReadOnlyView} searchTerm={projectSearchTerm}/>
-                </div>
+                 <Tabs value={activeExplorerTab} onValueChange={(value) => setActiveExplorerTab(value as ExplorerTab)} className="h-full flex flex-col p-1 sm:p-2 md:p-3">
+                    <TabsList className="grid w-full grid-cols-2">
+                        <TabsTrigger value="files"><FolderTree className="h-4 w-4 mr-2"/>Explorer</TabsTrigger>
+                        <TabsTrigger value="history"><History className="h-4 w-4 mr-2"/>History</TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="files" className="flex-grow mt-2">
+                        <FileExplorer nodes={filteredFileSystemNodes} onNodeSelect={handleNodeSelectedInExplorer} onDeleteNode={handleDeleteNodeRequest} onAddFileToFolder={onAddFileToFolderCallback} onAddFolderToFolder={onAddFolderToFolderCallback} selectedNodeId={selectedFileNodeId} onMoveNode={handleMoveNode} isReadOnly={isReadOnlyView} searchTerm={projectSearchTerm}/>
+                    </TabsContent>
+                    <TabsContent value="history" className="flex-grow mt-2">
+                        <ProjectHistory history={currentProject.history || []} />
+                    </TabsContent>
+                </Tabs>
               </ResizablePanel>
               <ResizableHandle withHandle />
             </>

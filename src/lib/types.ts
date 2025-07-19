@@ -67,6 +67,13 @@ export interface ProjectViewer {
   viewedAt: string;
 }
 
+export interface HistoryEntry {
+  id: string;
+  timestamp: string;
+  message: string;
+  userId?: string; // Optional: To link event to a user
+}
+
 export interface Project {
   id: string;
   name: string;
@@ -78,4 +85,5 @@ export interface Project {
   createdAt: string; 
   updatedAt: string;
   viewers?: Record<string, ProjectViewer>;
+  history?: HistoryEntry[]; // Added history field
 }

@@ -6,7 +6,7 @@
  * Real-time collaboration features (subscriptions) have been removed for simplification.
  */
 import { db } from '@/lib/firebase';
-import type { Project, FileSystemNode, WhiteboardData, ExcalidrawAppState, ExcalidrawElement } from '@/lib/types';
+import type { Project, FileSystemNode, WhiteboardData, ExcalidrawAppState, ExcalidrawElement, HistoryEntry } from '@/lib/types';
 import {
   doc,
   getDoc,
@@ -166,13 +166,14 @@ interface ProjectDocument {
   createdAt: string;
   updatedAt: string;
   projectDataBlob: string; // JSON string
-  viewers?: Project['viewers']; // Add viewers to the document type
+  viewers?: Project['viewers'];
 }
 
 interface ProjectDataBlobContent {
   textContent: string;
   whiteboardContent: WhiteboardData | null;
   fileSystemRoots: FileSystemNode[];
+  history?: HistoryEntry[];
 }
 
 export async function loadProjectData(projectId: string): Promise<Project | null> {
@@ -194,6 +195,7 @@ export async function loadProjectData(projectId: string): Promise<Project | null
             textContent: DEFAULT_EMPTY_TEXT_CONTENT,
             whiteboardContent: { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
             fileSystemRoots: [],
+            history: [],
           };
         }
       } else {
@@ -202,6 +204,7 @@ export async function loadProjectData(projectId: string): Promise<Project | null
           textContent: DEFAULT_EMPTY_TEXT_CONTENT,
           whiteboardContent: { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
           fileSystemRoots: [],
+          history: [],
         };
       }
 
@@ -209,12 +212,13 @@ export async function loadProjectData(projectId: string): Promise<Project | null
         id: dbData.id,
         name: dbData.name,
         ownerId: dbData.ownerId || undefined,
-        createdAt: convertTimestampsForClient(dbData.createdAt), // Ensure timestamps are strings
-        updatedAt: convertTimestampsForClient(dbData.updatedAt), // Ensure timestamps are strings
+        createdAt: convertTimestampsForClient(dbData.createdAt),
+        updatedAt: convertTimestampsForClient(dbData.updatedAt),
         textContent: projectCoreData.textContent,
         whiteboardContent: processSingleWhiteboardData(projectCoreData.whiteboardContent, 'load'),
         fileSystemRoots: processFileSystemRootsRecursive(projectCoreData.fileSystemRoots, 'load'),
-        viewers: dbData.viewers, // Load viewers
+        viewers: dbData.viewers,
+        history: projectCoreData.history || [],
       };
       console.log(`[FirestoreService Blob] Project ${projectId} loaded and parsed.`);
       return project;
@@ -235,19 +239,25 @@ export async function saveProjectData(project: Project): Promise<void> {
       textContent: project.textContent,
       whiteboardContent: processSingleWhiteboardData(project.whiteboardContent, 'save'),
       fileSystemRoots: processFileSystemRootsRecursive(project.fileSystemRoots, 'save'),
+      history: project.history || [],
     };
 
     const sanitizedBlobContent = sanitizeDataForFirestore(dataToBlob);
 
-    const projectDocForDb: ProjectDocument = {
+    const projectDocForDb: Partial<ProjectDocument> = {
       id: project.id,
       name: project.name,
       ownerId: project.ownerId || null,
-      createdAt: project.createdAt, 
       updatedAt: project.updatedAt, 
       projectDataBlob: JSON.stringify(sanitizedBlobContent || {}),
       viewers: sanitizeDataForFirestore(project.viewers || {}),
     };
+    
+    // Don't overwrite createdAt on subsequent saves
+    if (!project.createdAt) {
+      projectDocForDb.createdAt = project.updatedAt;
+    }
+
 
     const projectDocRef = doc(db, PROJECTS_COLLECTION, project.id);
     await setDoc(projectDocRef, projectDocForDb, { merge: true });
@@ -299,6 +309,7 @@ export async function getAllProjectsFromFirestore(userId?: string): Promise<Proj
             textContent: DEFAULT_EMPTY_TEXT_CONTENT,
             whiteboardContent: { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
             fileSystemRoots: [],
+            history: [],
           };
         }
       } else {
@@ -307,6 +318,7 @@ export async function getAllProjectsFromFirestore(userId?: string): Promise<Proj
           textContent: DEFAULT_EMPTY_TEXT_CONTENT,
           whiteboardContent: { ...DEFAULT_EMPTY_WHITEBOARD_DATA_CLIENT },
           fileSystemRoots: [],
+          history: [],
         };
       }
         
@@ -319,7 +331,8 @@ export async function getAllProjectsFromFirestore(userId?: string): Promise<Proj
         textContent: projectCoreData.textContent,
         whiteboardContent: processSingleWhiteboardData(projectCoreData.whiteboardContent, 'load'),
         fileSystemRoots: processFileSystemRootsRecursive(projectCoreData.fileSystemRoots, 'load'),
-        viewers: dbData.viewers, // Load viewers
+        viewers: dbData.viewers,
+        history: projectCoreData.history || [],
       };
       projects.push(project);
     }
@@ -346,6 +359,7 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
       textContent: initialTextContentWithDefaults,
       whiteboardContent: processSingleWhiteboardData(initialWhiteboardContentWithDefaults, 'save'),
       fileSystemRoots: processFileSystemRootsRecursive(initialFileSystemRootsWithDefaults, 'save'),
+      history: [{ id: crypto.randomUUID(), timestamp: now, message: 'Project created.' }],
     };
     const sanitizedBlobContent = sanitizeDataForFirestore(dataToBlob);
 
@@ -370,10 +384,11 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
       ownerId: projectDocForDb.ownerId || undefined,
       createdAt: projectDocForDb.createdAt,
       updatedAt: projectDocForDb.updatedAt,
-      textContent: initialTextContentWithDefaults, // Use the processed initial defaults
-      whiteboardContent: processSingleWhiteboardData(initialWhiteboardContentWithDefaults, 'load'), // Process for client
-      fileSystemRoots: processFileSystemRootsRecursive(initialFileSystemRootsWithDefaults, 'load'), // Process for client
+      textContent: initialTextContentWithDefaults,
+      whiteboardContent: processSingleWhiteboardData(initialWhiteboardContentWithDefaults, 'load'),
+      fileSystemRoots: processFileSystemRootsRecursive(initialFileSystemRootsWithDefaults, 'load'),
       viewers: newProjectData.viewers,
+      history: dataToBlob.history,
     };
     return createdProject;
 
@@ -394,4 +409,3 @@ export async function deleteProjectFromFirestore(projectId: string): Promise<voi
     throw error;
   }
 }
-    
