@@ -31,12 +31,15 @@ import {
   ListCollapse, 
   MessageSquareQuote, 
   Wand2,
+  Upload,
 } from "lucide-react";
 import { AITextEnhancementDialog } from "./AITextEnhancementDialog";
 import { AskAiDialog } from "./AskAiDialog"; 
 import { generateProjectSummary, type GenerateProjectSummaryOutput } from "@/ai/flows/generate-project-summary";
 import { autoFormatText, type AutoFormatTextOutput } from "@/ai/flows/autoformat-text-flow";
 import { generateImage } from '@/ai/flows/generate-image-flow';
+import { uploadImage, dataURIToBlob } from '@/services/storageService';
+import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from "@/hooks/use-toast";
 import {
   Dialog,
@@ -377,6 +380,7 @@ const isLikelyCodeBlock = (text: string) => {
 
 export function RichTextEditor({ value, onChange, isReadOnly = false }: RichTextEditorProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [activeAiTool, setActiveAiTool] = useState<string | null>(null);
 
@@ -393,6 +397,8 @@ export function RichTextEditor({ value, onChange, isReadOnly = false }: RichText
   const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
   const [imagePrompt, setImagePrompt] = useState("");
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const [isAskAiDialogOpen, setIsAskAiDialogOpen] = useState(false); 
   const [initialQueryForAskAi, setInitialQueryForAskAi] = useState(""); 
@@ -404,6 +410,8 @@ export function RichTextEditor({ value, onChange, isReadOnly = false }: RichText
   const commandButtonRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const menuContentRef = useRef<HTMLDivElement>(null);
   const [focusedCommandIndex, setFocusedCommandIndex] = useState(0);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
 
   const editor = useEditor({
@@ -617,7 +625,10 @@ export function RichTextEditor({ value, onChange, isReadOnly = false }: RichText
   };
 
   const handleOpenImageDialog = () => {
-    if (isReadOnly) return;
+    if (isReadOnly || !user) {
+        toast({ title: "Action disabled", description: "You must be logged in to insert images.", variant: "destructive"});
+        return;
+    }
     setImageUrl("");
     setGeneratedImageUrl(null);
     setImagePrompt("");
@@ -641,11 +652,53 @@ export function RichTextEditor({ value, onChange, isReadOnly = false }: RichText
     try {
       const result = await generateImage({ prompt: imagePrompt });
       setGeneratedImageUrl(result.imageUrl);
+      toast({ title: "Image Generated", description: "You can now insert the image into your document."});
     } catch (error) {
       console.error("AI Image Generation error:", error);
       toast({ title: "AI Error", description: "Failed to generate image. Please try again.", variant: "destructive" });
     } finally {
       setIsGeneratingImage(false);
+    }
+  };
+
+  const handleInsertGeneratedImage = async () => {
+    if (!generatedImageUrl || !user) return;
+    setIsUploading(true);
+    try {
+      const imageBlob = dataURIToBlob(generatedImageUrl);
+      const storageUrl = await uploadImage(imageBlob, user.uid);
+      handleInsertImageFromDialog(storageUrl);
+      toast({ title: "Image Uploaded", description: "AI-generated image has been saved and inserted."});
+    } catch (error) {
+      console.error("Error uploading generated image:", error);
+      toast({ title: "Upload Failed", description: (error as Error).message, variant: "destructive" });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !user) return;
+
+    if (!file.type.startsWith('image/')) {
+        toast({ title: "Invalid File", description: "Please select an image file.", variant: "destructive" });
+        return;
+    }
+
+    setIsUploading(true);
+    try {
+        const storageUrl = await uploadImage(file, user.uid);
+        handleInsertImageFromDialog(storageUrl);
+        toast({ title: "Image Uploaded", description: "Your image has been saved and inserted."});
+    } catch (error) {
+        console.error("Error uploading file:", error);
+        toast({ title: "Upload Failed", description: (error as Error).message, variant: "destructive" });
+    } finally {
+        setIsUploading(false);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
     }
   };
 
@@ -861,12 +914,13 @@ export function RichTextEditor({ value, onChange, isReadOnly = false }: RichText
                 <DialogHeader>
                   <DialogTitle>Insert Image</DialogTitle>
                   <DialogDescription>
-                    Provide a URL or generate an image with AI.
+                    Provide a URL, upload a file, or generate an image with AI.
                   </DialogDescription>
                 </DialogHeader>
                 <Tabs defaultValue="url" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2">
+                  <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="url">From URL</TabsTrigger>
+                    <TabsTrigger value="upload">Upload</TabsTrigger>
                     <TabsTrigger value="ai">Generate with AI</TabsTrigger>
                   </TabsList>
                   <TabsContent value="url">
@@ -882,6 +936,28 @@ export function RichTextEditor({ value, onChange, isReadOnly = false }: RichText
                     <DialogFooter>
                       <Button variant="outline" onClick={() => setIsImageDialogOpen(false)}>Cancel</Button>
                       <Button onClick={() => handleInsertImageFromDialog(imageUrl)} disabled={!imageUrl.trim()}>Insert Image</Button>
+                    </DialogFooter>
+                  </TabsContent>
+                   <TabsContent value="upload">
+                    <div className="grid gap-4 py-4">
+                       <Label htmlFor="file-upload">Upload from Device</Label>
+                        <Input
+                          id="file-upload"
+                          type="file"
+                          ref={fileInputRef}
+                          onChange={handleFileUpload}
+                          accept="image/*"
+                          className="text-sm"
+                        />
+                        {isUploading && (
+                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <p>Uploading...</p>
+                            </div>
+                        )}
+                    </div>
+                     <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsImageDialogOpen(false)}>Cancel</Button>
                     </DialogFooter>
                   </TabsContent>
                   <TabsContent value="ai">
@@ -918,7 +994,9 @@ export function RichTextEditor({ value, onChange, isReadOnly = false }: RichText
                     </div>
                     <DialogFooter>
                       <Button variant="outline" onClick={() => setIsImageDialogOpen(false)}>Cancel</Button>
-                      <Button onClick={() => handleInsertImageFromDialog(generatedImageUrl)} disabled={!generatedImageUrl || isGeneratingImage}>Insert Generated Image</Button>
+                      <Button onClick={handleInsertGeneratedImage} disabled={!generatedImageUrl || isGeneratingImage || isUploading}>
+                        {isUploading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Inserting...</> : 'Insert Generated Image'}
+                      </Button>
                     </DialogFooter>
                   </TabsContent>
                 </Tabs>
