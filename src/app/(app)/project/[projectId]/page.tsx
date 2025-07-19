@@ -197,8 +197,7 @@ function ProjectPageContent() {
   const { user: authUser, loading: authLoading } = useAuth();
 
   const searchParams = useSearchParams();
-  const initialIsShared = searchParams.get('shared') === 'true';
-
+  
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [isLoadingProject, setIsLoadingProject] = useState(true);
   const [isReadOnlyView, setIsReadOnlyView] = useState(false);
@@ -813,7 +812,7 @@ function ProjectPageContent() {
         </ResizablePanelGroup>
       </main>
 
-      {currentProject && (<ShareProjectDialog project={currentProject} isOpen={isShareDialogOpen} onOpenChange={setIsShareDialogOpen} isLocal={!authUser} />)}
+      {currentProject && (<ShareProjectDialog project={currentProject} isOpen={isShareDialogOpen} onOpenChange={setIsShareDialogOpen} isLocal={!authUser || !currentProject.ownerId} />)}
 
     {!isReadOnlyView && (
       <Dialog open={isNewItemDialogOpen} onOpenChange={setIsNewItemDialogOpen}>

@@ -166,6 +166,7 @@ interface ProjectDocument {
   createdAt: string;
   updatedAt: string;
   projectDataBlob: string; // JSON string
+  viewers?: Project['viewers']; // Add viewers to the document type
 }
 
 interface ProjectDataBlobContent {
@@ -213,6 +214,7 @@ export async function loadProjectData(projectId: string): Promise<Project | null
         textContent: projectCoreData.textContent,
         whiteboardContent: processSingleWhiteboardData(projectCoreData.whiteboardContent, 'load'),
         fileSystemRoots: processFileSystemRootsRecursive(projectCoreData.fileSystemRoots, 'load'),
+        viewers: dbData.viewers, // Load viewers
       };
       console.log(`[FirestoreService Blob] Project ${projectId} loaded and parsed.`);
       return project;
@@ -244,6 +246,7 @@ export async function saveProjectData(project: Project): Promise<void> {
       createdAt: project.createdAt, // Should be string from client
       updatedAt: project.updatedAt, // Should be string from client (new Date().toISOString())
       projectDataBlob: JSON.stringify(sanitizedBlobContent || {}),
+      viewers: sanitizeDataForFirestore(project.viewers || {}), // Sanitize and save viewers
     };
 
     const projectDocRef = doc(db, PROJECTS_COLLECTION, project.id);
@@ -316,6 +319,7 @@ export async function getAllProjectsFromFirestore(userId?: string): Promise<Proj
         textContent: projectCoreData.textContent,
         whiteboardContent: processSingleWhiteboardData(projectCoreData.whiteboardContent, 'load'),
         fileSystemRoots: processFileSystemRootsRecursive(projectCoreData.fileSystemRoots, 'load'),
+        viewers: dbData.viewers, // Load viewers
       };
       projects.push(project);
     }
@@ -352,6 +356,7 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
       createdAt: now,
       updatedAt: now,
       projectDataBlob: JSON.stringify(sanitizedBlobContent || {}),
+      viewers: sanitizeDataForFirestore(newProjectData.viewers || {}),
     };
 
     const projectDocRef = doc(db, PROJECTS_COLLECTION, newProjectId);
@@ -368,6 +373,7 @@ export async function createProjectInFirestore(newProjectData: Omit<Project, 'id
       textContent: initialTextContentWithDefaults, // Use the processed initial defaults
       whiteboardContent: processSingleWhiteboardData(initialWhiteboardContentWithDefaults, 'load'), // Process for client
       fileSystemRoots: processFileSystemRootsRecursive(initialFileSystemRootsWithDefaults, 'load'), // Process for client
+      viewers: newProjectData.viewers,
     };
     return createdProject;
 

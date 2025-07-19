@@ -103,19 +103,37 @@ export default function DashboardPage() {
     try {
       const localProjects = await dbGetAllProjects();
       const firestoreProjects = await getAllProjectsFromFirestore(user.uid);
-      const combinedProjects = [...localProjects.map(p => ({...p, ownerId: user.uid})), ...firestoreProjects];
       
-      // Use a Set to handle potential duplicates by ID
-      const uniqueProjects = Array.from(new Map(combinedProjects.map(p => [p.id, p])).values());
+      const firestoreProjectMap = new Map(firestoreProjects.map(p => [p.id, p]));
+      
+      const projectsToUpload: Project[] = [];
+      const projectsToKeepInFirestore: Project[] = [];
 
-      for (const project of uniqueProjects) {
-        await createProjectInFirestore(project);
+      for (const local of localProjects) {
+        const cloud = firestoreProjectMap.get(local.id);
+        if (!cloud || new Date(local.updatedAt) > new Date(cloud.updatedAt)) {
+          projectsToUpload.push({ ...local, ownerId: user.uid });
+        }
+      }
+
+      firestoreProjects.forEach(p => projectsToKeepInFirestore.push(p));
+
+      for (const proj of projectsToUpload) {
+        await createProjectInFirestore(proj);
+        const index = projectsToKeepInFirestore.findIndex(p => p.id === proj.id);
+        if (index > -1) {
+            projectsToKeepInFirestore[index] = proj;
+        } else {
+            projectsToKeepInFirestore.push(proj);
+        }
       }
 
       // Clear local projects after successful sync
-      await dbSaveAllProjects([]);
-
-      setProjects(uniqueProjects.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()));
+      for(const p of localProjects) {
+        await dbDeleteProject(p.id);
+      }
+      
+      setProjects(projectsToKeepInFirestore.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()));
       toast({ title: "Sync Complete", description: "Your local projects have been synced to your account." });
     } catch (error) {
       console.error("Error syncing projects:", error);
@@ -129,27 +147,32 @@ export default function DashboardPage() {
 
   const handleCreateProject = useCallback(async (newProjectData: Omit<Project, 'id' | 'createdAt' | 'updatedAt' | 'fileSystemRoots' | 'ownerId'>) => {
     const now = new Date().toISOString();
-    const projectBase: Omit<Project, 'id'> = {
+    const newProjectId = crypto.randomUUID();
+
+    const projectBase = {
       ...newProjectData,
+      id: newProjectId,
       ownerId: user?.uid,
       textContent: newProjectData.textContent || DEFAULT_EMPTY_TEXT_CONTENT,
       whiteboardContent: newProjectData.whiteboardContent || {...DEFAULT_EMPTY_WHITEBOARD_DATA},
       fileSystemRoots: newProjectData.fileSystemRoots ? ensureNodeContentDefaults(newProjectData.fileSystemRoots) : [],
       createdAt: now,
       updatedAt: now,
+      viewers: {},
     };
 
     try {
+      let newProject: Project;
       if (user) {
-        const newProject = await createProjectInFirestore(projectBase);
-        setProjects((prevProjects) => [newProject, ...prevProjects]);
+        newProject = await createProjectInFirestore(projectBase);
         toast({ title: "Project Created", description: `"${newProject.name}" has been created in the cloud.`});
       } else {
-        const newProject: Project = { ...projectBase, id: crypto.randomUUID() };
+        newProject = projectBase;
         await dbSaveProject(newProject);
-        setProjects((prevProjects) => [newProject, ...prevProjects]);
         toast({ title: "Local Project Created", description: `"${newProject.name}" has been saved to your browser.`});
       }
+      setProjects((prevProjects) => [newProject, ...prevProjects]);
+
     } catch (error) {
       console.error("Failed to create project", error);
       toast({ title: "Error Creating Project", description: "Could not create project.", variant: "destructive" });
@@ -158,18 +181,22 @@ export default function DashboardPage() {
 
   const handleDeleteProject = useCallback(async (projectId: string) => {
     const projectToDelete = projects.find(p => p.id === projectId);
-    if (user && projectToDelete?.ownerId && projectToDelete.ownerId !== user.uid) {
+    if (!projectToDelete) return;
+    
+    // For cloud projects, only the owner can delete
+    if (projectToDelete.ownerId && (!user || user.uid !== projectToDelete.ownerId)) {
          toast({ title: "Permission Denied", description: "You are not the owner of this project.", variant: "destructive" });
          return;
     }
+    
     try {
-      if (user && projectToDelete?.ownerId) {
+      if (projectToDelete.ownerId && user) {
         await deleteProjectFromFirestore(projectId);
       } else {
         await dbDeleteProject(projectId);
       }
       setProjects((prevProjects) => prevProjects.filter((p) => p.id !== projectId));
-      toast({ title: "Project Deleted", description: `"${projectToDelete?.name || 'Project'}" has been deleted.`});
+      toast({ title: "Project Deleted", description: `"${projectToDelete.name}" has been deleted.`});
     } catch (error) {
       console.error("Failed to delete project", error);
       toast({ title: "Error Deleting Project", description: "Could not delete project.", variant: "destructive" });
@@ -224,11 +251,16 @@ export default function DashboardPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Sync Local Projects?</AlertDialogTitle>
             <AlertDialogDescription>
-              We found some projects saved locally in this browser. Would you like to sync them with your account?
+              We found some projects saved locally in this browser. Would you like to sync them with your account? This may overwrite cloud data if the local version is newer.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => dbSaveAllProjects([])}>No, Discard Local Data</AlertDialogCancel>
+            <AlertDialogCancel onClick={async () => {
+                const localProjects = await dbGetAllProjects();
+                for (const p of localProjects) {
+                    await dbDeleteProject(p.id);
+                }
+            }}>No, Discard Local Data</AlertDialogCancel>
             <AlertDialogAction onClick={handleSyncProjects} disabled={isSyncing}>
               {isSyncing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Yes, Sync Now
@@ -267,7 +299,7 @@ export default function DashboardPage() {
               project={project}
               onDeleteProject={handleDeleteProject}
               onShareProject={handleShareProject}
-              isLocal={!user}
+              isLocal={!user || !project.ownerId}
             />
           ))}
         </div>
@@ -293,7 +325,7 @@ export default function DashboardPage() {
           project={projectToShare}
           isOpen={isShareDialogOpen}
           onOpenChange={setIsShareDialogOpen}
-          isLocal={!user}
+          isLocal={!user || !projectToShare.ownerId}
         />
       )}
     </div>
