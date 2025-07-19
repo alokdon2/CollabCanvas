@@ -230,18 +230,25 @@ function ProjectPageContent() {
     async function fetchAndInitializeProject() {
       if (!projectId || !mounted) return;
       setIsLoadingProject(true);
+      
+      const isSharedView = searchParams.get('shared') === 'true';
+
       try {
         let projectData;
-        if (authUser) {
+        if (isSharedView) {
+          // Always fetch from Firestore for shared links
+          projectData = await realtimeLoadProjectData(projectId);
+        } else if (authUser) {
+          // Logged-in user, non-shared link
           projectData = await realtimeLoadProjectData(projectId);
         } else {
+          // Logged-out user, non-shared link (local)
           projectData = await dbGetProjectById(projectId);
         }
         
         if (!mounted) return;
 
         if (projectData) {
-          const isSharedView = searchParams.get('shared') === 'true';
           const effectiveReadOnly = isSharedView && (!authUser || authUser.uid !== projectData.ownerId);
           setIsReadOnlyView(effectiveReadOnly);
           
@@ -261,7 +268,10 @@ function ProjectPageContent() {
                 }
               };
               projectToUpdate.viewers = newViewers;
-              await realtimeSaveProjectData(projectToUpdate); 
+              // Save viewer update only if it's a cloud project
+              if (projectData.ownerId) {
+                await realtimeSaveProjectData(projectToUpdate); 
+              }
             }
           }
 
