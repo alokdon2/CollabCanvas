@@ -4,7 +4,7 @@
 import type { Project } from './types';
 
 const DB_NAME = 'CollabCanvasDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const PROJECT_STORE_NAME = 'projects';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
