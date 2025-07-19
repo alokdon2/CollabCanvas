@@ -1,7 +1,6 @@
 // src/services/storageService.ts
 import { storage } from '@/lib/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Uploads an image blob to Firebase Storage.
@@ -17,9 +16,9 @@ export async function uploadImage(imageBlob: Blob, userId: string): Promise<stri
     throw new Error("No image data provided.");
   }
 
-  // Generate a unique filename
+  // Generate a unique filename using the native Crypto API
   const fileExtension = imageBlob.type.split('/')[1] || 'png';
-  const fileName = `${uuidv4()}.${fileExtension}`;
+  const fileName = `${crypto.randomUUID()}.${fileExtension}`;
   const storagePath = `user-uploads/${userId}/images/${fileName}`;
 
   const storageRef = ref(storage, storagePath);
